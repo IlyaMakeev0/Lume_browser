@@ -1,327 +1,249 @@
 "use client";
 
-import { type FormEvent, useCallback, useEffect, useMemo, useState } from "react";
-import { ArrowLeft, ArrowRight, Cpu, Lock, RefreshCw } from "lucide-react";
+import {
+  type FormEvent,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+import {
+  ArrowLeft,
+  ArrowRight,
+  Lock,
+  RefreshCw,
+  Settings,
+  X,
+} from "lucide-react";
 import { BrowserViewport } from "@/components/browser/BrowserViewport";
 import { CommandBar } from "@/components/CommandBar";
 import { SettingsPanel } from "@/components/SettingsPanel";
 import { Sidebar } from "@/components/Sidebar";
 import { Titlebar } from "@/components/Titlebar";
-import {
-  applyPreferences,
-  readPreferences,
-  writePreferences
-} from "@/lib/preferences";
+import { applyPreferences, readPreferences, writePreferences } from "@/lib/preferences";
+import { evalInWebview } from "@/lib/webview-utils";
 import { invokeCommand } from "@/lib/tauri";
-import type {
-  BrowserTab,
-  FetchPreview,
-  NewTabRequest,
-  PlatformProfile
-} from "@/types/tabs";
+import type { BrowserTab, NewTabRequest } from "@/types/tabs";
 import type { UserPreferences } from "@/types/preferences";
 
-const fallbackTabs: BrowserTab[] = [
-  {
-    id: "tab-1",
-    title: "Lume Start",
-    url: "lume://start",
-    is_active: true,
-    pinned: true,
-    space: "Focus"
-  },
-  {
-    id: "tab-2",
-    title: "Rust Network Layer",
-    url: "https://tauri.app",
-    is_active: false,
-    pinned: false,
-    space: "Build"
-  },
-  {
-    id: "tab-3",
-    title: "Design Notes",
-    url: "lume://notes",
-    is_active: false,
-    pinned: false,
-    space: "Read"
-  }
-];
+const INIT_TAB: BrowserTab = {
+  id: "init-1",
+  title: "New Tab",
+  url: "lume://new-tab",
+  is_active: true,
+  pinned: false,
+  space: "Focus",
+};
 
-function resolveLocalNavigation(input: string) {
-  const trimmed = input.trim();
-
-  if (!trimmed) {
-    return {
-      title: "New Tab",
-      url: "lume://new-tab"
-    };
-  }
-
-  if (trimmed.startsWith("lume://") || trimmed.startsWith("about:")) {
-    return {
-      title: trimmed === "lume://start" ? "Lume Start" : "Lume Internal",
-      url: trimmed
-    };
-  }
-
-  if (/^https?:\/\//i.test(trimmed)) {
-    return {
-      title: new URL(trimmed).hostname,
-      url: trimmed
-    };
-  }
-
-  if (looksLikeHost(trimmed)) {
-    const host = hostCandidate(trimmed) ?? trimmed;
-    const scheme = isLocalOrIpHost(host) ? "http" : "https";
-    const normalizedInput =
-      isRawIpv6Host(host) && !trimmed.startsWith("[")
-        ? trimmed.replace(host, `[${host}]`)
-        : trimmed;
-    const normalized = `${scheme}://${normalizedInput}`;
-
-    return {
-      title: new URL(normalized).hostname,
-      url: normalized
-    };
-  }
-
-  return {
-    title: `Search: ${trimmed}`,
-    url: `https://duckduckgo.com/?q=${encodeURIComponent(trimmed)}`
-  };
-}
-
-function looksLikeHost(input: string) {
-  if (/\s/.test(input)) {
-    return false;
-  }
-
-  const host = hostCandidate(input);
-
-  return Boolean(host && (host.includes(".") || isLocalOrIpHost(host)));
-}
-
-function hostCandidate(input: string) {
-  const firstToken = input.split("/")[0]?.trim();
-
-  if (!firstToken) {
-    return null;
-  }
-
-  if (firstToken.startsWith("[")) {
-    return firstToken.slice(1).split("]")[0] ?? null;
-  }
-
-  if (isRawIpv6Host(firstToken)) {
-    return firstToken;
-  }
-
-  return firstToken.split(":")[0] ?? firstToken;
-}
-
-function isLocalOrIpHost(host: string) {
-  return (
-    host.toLowerCase() === "localhost" ||
-    /^(\d{1,3}\.){3}\d{1,3}$/.test(host) ||
-    isRawIpv6Host(host)
-  );
-}
-
-function isRawIpv6Host(host: string) {
-  return host.includes(":") && /^[0-9a-f:]+$/i.test(host);
-}
-
-function isPreviewableUrl(url?: string) {
+function isWebUrl(url?: string) {
   return Boolean(url?.startsWith("http://") || url?.startsWith("https://"));
 }
 
+function resolveInputToUrl(raw: string): string {
+  const t = raw.trim();
+  if (!t) return "lume://new-tab";
+  if (/^(https?|lume|about):\/\//i.test(t)) return t;
+  if (/\s/.test(t) || !t.includes("."))
+    return `https://duckduckgo.com/?q=${encodeURIComponent(t)}`;
+  return `https://${t}`;
+}
+
+function displayUrl(url: string): string {
+  try {
+    const u = new URL(url);
+    if (u.protocol === "lume:" || u.protocol === "about:") return url;
+    return u.href;
+  } catch {
+    return url;
+  }
+}
+
 export default function Home() {
-  const [tabs, setTabs] = useState<BrowserTab[]>(fallbackTabs);
+  const [tabs, setTabs] = useState<BrowserTab[]>([INIT_TAB]);
   const [commandOpen, setCommandOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const [preview, setPreview] = useState<FetchPreview | null>(null);
-  const [platformProfile, setPlatformProfile] = useState<PlatformProfile | null>(null);
+  const [addressValue, setAddressValue] = useState("");
+  const [isEditingAddress, setIsEditingAddress] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
   const [preferences, setPreferences] = useState<UserPreferences>(() => readPreferences());
+  const addressRef = useRef<HTMLInputElement>(null);
 
   const activeTab = useMemo(
-    () => tabs.find((tab) => tab.is_active) ?? tabs[0],
+    () => tabs.find((t) => t.is_active) ?? tabs[0],
     [tabs]
   );
 
-  const refreshTabs = useCallback(async () => {
-    const nextTabs = await invokeCommand<BrowserTab[]>("list_tabs");
-
-    if (nextTabs?.length) {
-      setTabs(nextTabs);
-    }
-  }, []);
-
+  /* ── Sync address bar with active tab URL ─────────────────────────── */
   useEffect(() => {
-    let isMounted = true;
+    if (!isEditingAddress) {
+      setAddressValue(activeTab?.url ?? "");
+    }
+  }, [activeTab?.url, isEditingAddress]);
 
-    void invokeCommand<BrowserTab[]>("list_tabs").then((nextTabs) => {
-      if (isMounted && nextTabs?.length) {
-        setTabs(nextTabs);
-      }
-    });
-
-    return () => {
-      isMounted = false;
-    };
-  }, []);
-
+  /* ── Apply preferences to <html> ─────────────────────────────────── */
   useEffect(() => {
     applyPreferences(preferences);
   }, [preferences]);
 
-  useEffect(() => {
-    let isMounted = true;
-
-    void invokeCommand<PlatformProfile>("platform_profile").then((profile) => {
-      if (isMounted && profile) {
-        setPlatformProfile(profile);
-      }
-    });
-
-    return () => {
-      isMounted = false;
-    };
+  /* ── Load tabs from Rust on mount ────────────────────────────────── */
+  const refreshTabs = useCallback(async () => {
+    const next = await invokeCommand<BrowserTab[]>("list_tabs");
+    if (next?.length) setTabs(next);
   }, []);
 
   useEffect(() => {
-    function onKeyDown(event: KeyboardEvent) {
-      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "t") {
-        event.preventDefault();
-        setCommandOpen(true);
-      }
-    }
+    void refreshTabs();
+  }, [refreshTabs]);
 
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, []);
-
+  /* ── Keyboard shortcuts ──────────────────────────────────────────── */
   useEffect(() => {
-    let isMounted = true;
-    const url = activeTab?.url;
-
-    if (!url) {
-      return;
-    }
-
-    void invokeCommand<FetchPreview>("fetch_preview", { url }).then((nextPreview) => {
-      if (isMounted && nextPreview) {
-        setPreview(nextPreview);
+    function onKey(e: KeyboardEvent) {
+      const mod = e.ctrlKey || e.metaKey;
+      if (mod && e.key === "t") {
+        e.preventDefault();
+        void createTab();
       }
-    });
+      if (mod && e.key === "l") {
+        e.preventDefault();
+        setIsEditingAddress(true);
+        setTimeout(() => {
+          addressRef.current?.focus();
+          addressRef.current?.select();
+        }, 0);
+      }
+      if (mod && e.key === "w") {
+        e.preventDefault();
+        if (activeTab) void closeTab(activeTab.id);
+      }
+      if (mod && e.key === "r") {
+        e.preventDefault();
+        void handleReload();
+      }
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  });
 
-    return () => {
-      isMounted = false;
-    };
-  }, [activeTab?.url]);
-
+  /* ── Tab CRUD ─────────────────────────────────────────────────────── */
   async function createTab() {
     const request: NewTabRequest = {
       title: "New Tab",
       url: "lume://new-tab",
-      space: "Focus",
-      activate: true
+      space: activeTab?.space ?? "Focus",
+      activate: true,
     };
-
     const created = await invokeCommand<BrowserTab>("create_tab", { request });
-
     if (created) {
       await refreshTabs();
-      return;
+    } else {
+      setTabs((prev) => [
+        ...prev.map((t) => ({ ...t, is_active: false })),
+        {
+          id: `local-${Date.now()}`,
+          title: "New Tab",
+          url: "lume://new-tab",
+          is_active: true,
+          pinned: false,
+          space: activeTab?.space ?? "Focus",
+        },
+      ]);
     }
-
-    setTabs((currentTabs) => {
-      const tab: BrowserTab = {
-        id: `local-${currentTabs.length + 1}`,
-        title: request.title ?? "New Tab",
-        url: request.url ?? "about:blank",
-        space: request.space ?? "Focus",
-        is_active: true,
-        pinned: false
-      };
-
-      return currentTabs.map((item) => ({ ...item, is_active: false })).concat(tab);
-    });
   }
 
   async function selectTab(id: string) {
     const selected = await invokeCommand<BrowserTab>("activate_tab", { id });
-
     if (selected) {
       await refreshTabs();
-      return;
+    } else {
+      setTabs((prev) => prev.map((t) => ({ ...t, is_active: t.id === id })));
     }
-
-    setTabs((currentTabs) =>
-      currentTabs.map((tab) => ({ ...tab, is_active: tab.id === id }))
-    );
   }
 
-  async function navigateTo(input: string) {
-    const navigated = await invokeCommand<BrowserTab>("navigate_active_tab", { input });
-
-    if (navigated) {
-      await refreshTabs();
-      return;
-    }
-
-    const target = resolveLocalNavigation(input);
-
-    setTabs((currentTabs) => {
-      if (!currentTabs.length) {
-        return [
-          {
-            id: "local-1",
-            title: target.title,
-            url: target.url,
-            is_active: true,
-            pinned: false,
-            space: "Focus"
-          }
-        ];
+  async function closeTab(id: string) {
+    const next = await invokeCommand<BrowserTab[]>("close_tab", { id });
+    if (next !== null) {
+      if (next.length === 0) {
+        await createTab();
+      } else {
+        setTabs(next);
       }
-
-      const activeIndex = currentTabs.findIndex((tab) => tab.is_active);
-      const indexToUpdate = activeIndex >= 0 ? activeIndex : 0;
-
-      return currentTabs.map((tab, index) => ({
-        ...tab,
-        title: index === indexToUpdate ? target.title : tab.title,
-        url: index === indexToUpdate ? target.url : tab.url,
-        is_active: index === indexToUpdate
-      }));
-    });
-  }
-
-  async function submitLocation(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const formData = new FormData(event.currentTarget);
-    const input = formData.get("location");
-
-    if (typeof input === "string") {
-      await navigateTo(input);
+    } else {
+      setTabs((prev) => {
+        const remaining = prev.filter((t) => t.id !== id);
+        if (!remaining.length) return prev;
+        const hasActive = remaining.some((t) => t.is_active);
+        if (hasActive) return remaining;
+        return remaining.map((t, i) => ({ ...t, is_active: i === remaining.length - 1 }));
+      });
     }
   }
 
-  function updatePreferences(nextPreferences: UserPreferences) {
-    setPreferences(nextPreferences);
-    writePreferences(nextPreferences);
+  /* ── Navigation ───────────────────────────────────────────────────── */
+  async function navigateTo(input: string) {
+    setIsLoading(true);
+    try {
+      const navigated = await invokeCommand<BrowserTab>("navigate_active_tab", { input });
+      if (navigated) {
+        await refreshTabs();
+        return;
+      }
+      // Fallback when Tauri is not available
+      const url = resolveInputToUrl(input);
+      setTabs((prev) => {
+        const idx = prev.findIndex((t) => t.is_active);
+        const i = idx >= 0 ? idx : 0;
+        let title = input;
+        try { title = new URL(url).hostname || input; } catch { /* use input */ }
+        return prev.map((t, j) =>
+          j === i ? { ...t, url, title } : t
+        );
+      });
+    } finally {
+      setIsLoading(false);
+    }
   }
 
-  const loadingPreview =
-    Boolean(activeTab?.url) &&
-    isPreviewableUrl(activeTab?.url) &&
-    preview?.url !== activeTab?.url;
+  async function submitAddress(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    setIsEditingAddress(false);
+    const raw = addressValue.trim();
+    if (raw) await navigateTo(raw);
+  }
+
+  /* ── Webview controls (via Rust eval_in_webview bridge) ──────────── */
+  async function handleBack() {
+    if (!activeTab) return;
+    await evalInWebview(activeTab.id, "history.back()");
+  }
+
+  async function handleForward() {
+    if (!activeTab) return;
+    await evalInWebview(activeTab.id, "history.forward()");
+  }
+
+  async function handleReload() {
+    if (!activeTab) return;
+    if (isWebUrl(activeTab.url)) {
+      await evalInWebview(activeTab.id, "location.reload()");
+    }
+  }
+
+  /* ── Preferences ─────────────────────────────────────────────────── */
+  function updatePreferences(next: UserPreferences) {
+    setPreferences(next);
+    writePreferences(next);
+  }
+
+  /* ── Derived state ───────────────────────────────────────────────── */
+  const isSecure = activeTab?.url?.startsWith("https://");
+  const canBrowse = isWebUrl(activeTab?.url);
+  const displayAddr = isEditingAddress ? addressValue : displayUrl(activeTab?.url ?? "");
 
   return (
     <div className="h-screen overflow-hidden text-ink">
-      <Titlebar />
+      <Titlebar pageTitle={canBrowse ? activeTab?.title : undefined} />
+
       <CommandBar
         open={commandOpen}
         onOpenChange={setCommandOpen}
@@ -334,78 +256,107 @@ export default function Home() {
         onClose={() => setSettingsOpen(false)}
       />
 
-      <main className="flex h-full pt-9">
+      {/* Main layout: sidebar + content */}
+      <div className="flex h-full pt-9">
         <Sidebar
           tabs={tabs}
           activeTabId={activeTab?.id}
           onCreateTab={createTab}
           onSelectTab={selectTab}
+          onCloseTab={closeTab}
           onOpenCommandBar={() => setCommandOpen(true)}
           onOpenSettings={() => setSettingsOpen(true)}
         />
 
-        <section className="flex min-w-0 flex-1 flex-col bg-shell">
-          <div className="flex h-14 shrink-0 items-center gap-2 border-b border-ink/10 bg-shell/92 px-4 backdrop-blur-xl">
+        {/* Content column */}
+        <div className="flex min-w-0 flex-1 flex-col bg-white">
+          {/* Navigation bar */}
+          <div className="flex h-11 shrink-0 items-center gap-1.5 border-b border-black/6 bg-[#f9f9f9] px-2">
+            {/* Nav buttons */}
             <button
               type="button"
-              aria-label="Back"
-              title="Back"
-              className="grid h-9 w-9 place-items-center rounded-md text-ink/56 transition hover:bg-ink/8 hover:text-ink"
+              onClick={handleBack}
+              className="grid h-8 w-8 place-items-center rounded-md text-black/35 transition hover:bg-black/6 hover:text-black disabled:opacity-30"
+              title="Back (Alt+←)"
             >
-              <ArrowLeft size={17} />
+              <ArrowLeft size={16} strokeWidth={2} />
             </button>
             <button
               type="button"
-              aria-label="Forward"
-              title="Forward"
-              className="grid h-9 w-9 place-items-center rounded-md text-ink/56 transition hover:bg-ink/8 hover:text-ink"
+              onClick={handleForward}
+              className="grid h-8 w-8 place-items-center rounded-md text-black/35 transition hover:bg-black/6 hover:text-black"
+              title="Forward (Alt+→)"
             >
-              <ArrowRight size={17} />
+              <ArrowRight size={16} strokeWidth={2} />
             </button>
             <button
               type="button"
-              aria-label="Reload"
-              title="Reload"
-              className="grid h-9 w-9 place-items-center rounded-md text-ink/56 transition hover:bg-ink/8 hover:text-ink"
+              onClick={handleReload}
+              className={`grid h-8 w-8 place-items-center rounded-md text-black/35 transition hover:bg-black/6 hover:text-black ${isLoading ? "animate-spin" : ""}`}
+              title="Reload (Ctrl+R)"
             >
-              <RefreshCw size={16} />
+              <RefreshCw size={15} strokeWidth={2} />
             </button>
 
+            {/* Address bar */}
             <form
-              key={`${activeTab?.id ?? "none"}-${activeTab?.url ?? "blank"}`}
-              onSubmit={submitLocation}
-              className="ml-1 flex h-10 min-w-0 flex-1 items-center gap-2 rounded-md border border-ink/10 bg-white px-3 shadow-sm"
+              onSubmit={submitAddress}
+              className="mx-1 flex h-8 min-w-0 flex-1 items-center gap-2 rounded-lg bg-black/5 px-3 ring-0 transition focus-within:bg-white focus-within:ring-2 focus-within:ring-ember/30"
             >
-              <Lock size={15} className="shrink-0 text-mint" />
+              {canBrowse && !isEditingAddress ? (
+                <Lock
+                  size={12}
+                  strokeWidth={2.5}
+                  className={`shrink-0 ${isSecure ? "text-mint" : "text-black/25"}`}
+                />
+              ) : (
+                <div className="h-3 w-3 shrink-0" />
+              )}
               <input
-                name="location"
-                defaultValue={activeTab?.url ?? "about:blank"}
-                className="min-w-0 flex-1 bg-transparent text-sm text-ink/72 outline-none"
-                aria-label="Location"
+                ref={addressRef}
+                value={displayAddr}
+                onChange={(e) => setAddressValue(e.target.value)}
+                onFocus={() => {
+                  setIsEditingAddress(true);
+                  setTimeout(() => addressRef.current?.select(), 0);
+                }}
+                onBlur={() => {
+                  setIsEditingAddress(false);
+                }}
+                placeholder="Search or enter URL"
+                className="min-w-0 flex-1 bg-transparent text-[13px] text-black/70 outline-none placeholder:text-black/25"
+                spellCheck={false}
+                autoComplete="off"
               />
+              {isEditingAddress && addressValue && (
+                <button
+                  type="button"
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={() => setAddressValue("")}
+                  className="grid h-4 w-4 shrink-0 place-items-center rounded-full bg-black/10 text-black/40 hover:bg-black/15"
+                >
+                  <X size={9} strokeWidth={3} />
+                </button>
+              )}
             </form>
 
-            <div className="hidden h-10 items-center gap-2 rounded-md bg-ink px-3 text-sm font-medium text-white lg:flex">
-              <Cpu size={16} className="text-mint" />
-              {platformProfile?.name ?? "Web preview"}
-            </div>
+            {/* Settings */}
+            <button
+              type="button"
+              onClick={() => setSettingsOpen(true)}
+              className="grid h-8 w-8 place-items-center rounded-md text-black/35 transition hover:bg-black/6 hover:text-black"
+              title="Settings"
+            >
+              <Settings size={15} strokeWidth={2} />
+            </button>
           </div>
 
-          <div
-            className={
-              preferences.density === "compact"
-                ? "min-h-0 flex-1 overflow-hidden p-3"
-                : "min-h-0 flex-1 overflow-hidden p-6"
-            }
-          >
-            <BrowserViewport
-              activeTab={activeTab}
-              preview={preview}
-              loadingPreview={loadingPreview}
-            />
+          {/* Viewport — fills remaining space; display:flex so children get resolved height */}
+          <div className="relative min-h-0 flex-1 flex">
+            <BrowserViewport activeTab={activeTab} onNavigate={navigateTo} />
           </div>
-        </section>
-      </main>
+        </div>
+      </div>
     </div>
   );
 }

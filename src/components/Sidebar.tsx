@@ -1,31 +1,24 @@
 "use client";
 
 import clsx from "clsx";
-import {
-  Compass,
-  Folder,
-  Globe2,
-  PanelLeftClose,
-  Plus,
-  Search,
-  Settings,
-  ShieldCheck
-} from "lucide-react";
+import { Globe2, Plus, Search, Settings, ShieldCheck, Folder, X } from "lucide-react";
+import { UpdateButton } from "@/components/UpdateButton";
 import type { BrowserTab } from "@/types/tabs";
 
-type SidebarProps = {
+type Props = {
   tabs: BrowserTab[];
   activeTabId?: string;
   onCreateTab: () => void;
   onSelectTab: (id: string) => void;
+  onCloseTab: (id: string) => void;
   onOpenCommandBar: () => void;
   onOpenSettings: () => void;
 };
 
-const spaces = [
-  { name: "Focus", accent: "bg-ember" },
-  { name: "Build", accent: "bg-mint" },
-  { name: "Read", accent: "bg-brass" }
+const SPACES = [
+  { name: "Focus", color: "bg-ember" },
+  { name: "Build", color: "bg-mint" },
+  { name: "Read", color: "bg-brass" },
 ];
 
 export function Sidebar({
@@ -33,117 +26,147 @@ export function Sidebar({
   activeTabId,
   onCreateTab,
   onSelectTab,
+  onCloseTab,
   onOpenCommandBar,
-  onOpenSettings
-}: SidebarProps) {
+  onOpenSettings,
+}: Props) {
   return (
-    <aside className="flex h-full w-[288px] shrink-0 flex-col border-r border-white/10 bg-ink/86 px-3 pb-4 pt-4 text-white shadow-soft backdrop-blur-2xl">
-      <div className="mb-4 flex items-center justify-between px-1">
-        <div className="flex items-center gap-2">
-          <div className="grid h-9 w-9 place-items-center rounded-md bg-white text-ink shadow-sm">
-            <Compass size={18} strokeWidth={1.9} />
-          </div>
-          <div className="min-w-0">
-            <p className="truncate text-sm font-semibold">Aura</p>
-            <p className="truncate text-xs text-white/48">Personal space</p>
-          </div>
+    <aside className="flex h-full w-[256px] shrink-0 flex-col border-r border-white/8 bg-ink/90 pb-3 pt-2 backdrop-blur-2xl">
+      {/* Logo area */}
+      <div className="mb-3 flex items-center gap-2.5 px-4 pt-1">
+        <div className="flex h-7 w-7 items-center justify-center rounded-md bg-ember text-white shadow-sm">
+          <span className="text-xs font-bold leading-none">L</span>
         </div>
+        <span className="text-sm font-semibold text-white">Lume</span>
+      </div>
+
+      {/* Search */}
+      <div className="mb-3 px-3">
         <button
           type="button"
-          aria-label="Collapse sidebar"
-          title="Collapse sidebar"
-          className="grid h-8 w-8 place-items-center rounded-md text-white/62 transition hover:bg-white/10 hover:text-white"
+          onClick={onOpenCommandBar}
+          className="flex h-9 w-full items-center gap-2.5 rounded-lg border border-white/8 bg-white/6 px-3 text-left text-white/40 transition hover:border-white/16 hover:bg-white/10 hover:text-white/70"
         >
-          <PanelLeftClose size={17} />
+          <Search size={14} />
+          <span className="min-w-0 flex-1 truncate text-sm">Search or navigate…</span>
+          <kbd className="hidden rounded border border-white/16 bg-white/8 px-1.5 py-0.5 text-[10px] text-white/30 lg:block">
+            ⌘T
+          </kbd>
         </button>
       </div>
 
-      <button
-        type="button"
-        onClick={onOpenCommandBar}
-        className="mb-4 flex h-10 items-center gap-2 rounded-md border border-white/10 bg-white/[0.07] px-3 text-left text-white/58 transition hover:border-mint/50 hover:bg-white/[0.1] hover:text-white"
-      >
-        <Search size={16} />
-        <span className="min-w-0 flex-1 truncate text-sm">Search or enter URL</span>
-      </button>
-
-      <div className="mb-5 grid grid-cols-3 gap-2">
-        {spaces.map((space) => (
+      {/* Spaces */}
+      <div className="mb-3 grid grid-cols-3 gap-1.5 px-3">
+        {SPACES.map((space) => (
           <button
             key={space.name}
             type="button"
-            className="flex h-9 items-center justify-center gap-1.5 rounded-md border border-white/10 bg-white/[0.06] text-xs font-medium text-white/76 transition hover:border-white/20 hover:bg-white/[0.1] hover:text-white"
+            className="flex h-8 items-center justify-center gap-1.5 rounded-md border border-white/8 bg-white/5 text-[11px] font-medium text-white/50 transition hover:border-white/16 hover:bg-white/10 hover:text-white/80"
           >
-            <span className={clsx("h-2 w-2 rounded-sm", space.accent)} />
+            <span className={clsx("h-1.5 w-1.5 rounded-[2px]", space.color)} />
             {space.name}
           </button>
         ))}
       </div>
 
-      <div className="mb-2 flex items-center justify-between px-1">
-        <span className="text-xs font-semibold uppercase text-white/42">Tabs</span>
+      {/* Tabs header */}
+      <div className="mb-1.5 flex items-center justify-between px-4">
+        <span className="text-[10px] font-semibold uppercase tracking-wider text-white/28">
+          Tabs
+        </span>
         <button
           type="button"
-          aria-label="Create tab"
-          title="Create tab"
           onClick={onCreateTab}
-          className="grid h-7 w-7 place-items-center rounded-md bg-white text-ink shadow-sm transition hover:bg-mint"
+          title="New tab (Ctrl+T)"
+          className="grid h-6 w-6 place-items-center rounded-md bg-white/10 text-white/60 transition hover:bg-white/18 hover:text-white"
         >
-          <Plus size={16} strokeWidth={2} />
+          <Plus size={13} strokeWidth={2.5} />
         </button>
       </div>
 
-      <div className="min-h-0 flex-1 space-y-1 overflow-y-auto pr-1">
-        {tabs.map((tab) => {
-          const isActive = tab.id === activeTabId || tab.is_active;
+      {/* Tab list */}
+      <div className="min-h-0 flex-1 overflow-y-auto px-2">
+        <div className="space-y-0.5">
+          {tabs.map((tab) => {
+            const isActive = tab.id === activeTabId || tab.is_active;
+            return (
+              <div
+                key={tab.id}
+                className={clsx(
+                  "group flex h-10 w-full items-center gap-2.5 rounded-lg px-2.5 transition",
+                  isActive
+                    ? "bg-white shadow-sm"
+                    : "text-white/60 hover:bg-white/8 hover:text-white"
+                )}
+              >
+                <button
+                  type="button"
+                  onClick={() => onSelectTab(tab.id)}
+                  className="flex min-w-0 flex-1 items-center gap-2.5"
+                >
+                  <Globe2
+                    size={14}
+                    strokeWidth={1.8}
+                    className={clsx(
+                      "shrink-0 transition",
+                      isActive ? "text-ember" : "text-white/32 group-hover:text-white/60"
+                    )}
+                  />
+                  <span
+                    className={clsx(
+                      "min-w-0 flex-1 truncate text-[13px]",
+                      isActive ? "font-medium text-ink" : ""
+                    )}
+                  >
+                    {tab.title}
+                  </span>
+                </button>
 
-          return (
-            <button
-              key={tab.id}
-              type="button"
-              onClick={() => onSelectTab(tab.id)}
-              className={clsx(
-                "flex h-11 w-full items-center gap-3 rounded-md px-3 text-left text-sm transition",
-                isActive
-                  ? "bg-white text-ink shadow-sm"
-                  : "text-white/70 hover:bg-white/[0.08] hover:text-white"
-              )}
-            >
-              <Globe2
-                size={16}
-                className={isActive ? "text-ember" : "text-white/42"}
-                strokeWidth={1.9}
-              />
-              <span className="min-w-0 flex-1 truncate">{tab.title}</span>
-              {tab.pinned ? (
-                <span className="h-1.5 w-1.5 rounded-sm bg-mint" />
-              ) : null}
-            </button>
-          );
-        })}
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onCloseTab(tab.id);
+                  }}
+                  title="Close tab"
+                  className={clsx(
+                    "grid h-5 w-5 shrink-0 place-items-center rounded-md transition",
+                    isActive
+                      ? "text-ink/30 hover:bg-ink/8 hover:text-ink"
+                      : "text-white/0 group-hover:text-white/40 hover:bg-white/12 hover:!text-white"
+                  )}
+                >
+                  <X size={11} strokeWidth={2.5} />
+                </button>
+              </div>
+            );
+          })}
+        </div>
       </div>
 
-      <div className="mt-4 space-y-1 border-t border-white/10 pt-3">
+      {/* Footer */}
+      <div className="mt-2 space-y-0.5 border-t border-white/8 px-2 pt-2">
+        <UpdateButton />
         <button
           type="button"
-          onClick={onOpenSettings}
-          className="flex h-10 w-full items-center gap-3 rounded-md px-3 text-sm text-white/64 transition hover:bg-white/[0.08] hover:text-white"
+          className="flex h-9 w-full items-center gap-2.5 rounded-lg px-2.5 text-[13px] text-white/48 transition hover:bg-white/8 hover:text-white"
         >
-          <ShieldCheck size={16} />
+          <ShieldCheck size={15} />
           Privacy
         </button>
         <button
           type="button"
-          className="flex h-10 w-full items-center gap-3 rounded-md px-3 text-sm text-white/64 transition hover:bg-white/[0.08] hover:text-white"
+          className="flex h-9 w-full items-center gap-2.5 rounded-lg px-2.5 text-[13px] text-white/48 transition hover:bg-white/8 hover:text-white"
         >
-          <Folder size={16} />
+          <Folder size={15} />
           Library
         </button>
         <button
           type="button"
-          className="flex h-10 w-full items-center gap-3 rounded-md px-3 text-sm text-white/64 transition hover:bg-white/[0.08] hover:text-white"
+          onClick={onOpenSettings}
+          className="flex h-9 w-full items-center gap-2.5 rounded-lg px-2.5 text-[13px] text-white/48 transition hover:bg-white/8 hover:text-white"
         >
-          <Settings size={16} />
+          <Settings size={15} />
           Settings
         </button>
       </div>

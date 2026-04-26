@@ -10,7 +10,7 @@ use lume_engine::{FetchPreview, HistoryEntry, NavigationTarget};
 use network_fetcher::NetworkFetcher;
 use platform::PlatformProfile;
 use tabs_manager::{BrowserTab, NewTabRequest, TabsManager};
-use tauri::State;
+use tauri::{Manager, State};
 
 #[tauri::command]
 fn list_tabs(state: State<'_, Mutex<TabsManager>>) -> Result<Vec<BrowserTab>, String> {
@@ -92,6 +92,18 @@ fn platform_profile() -> PlatformProfile {
     platform::current()
 }
 
+#[tauri::command]
+fn eval_in_webview(
+    app: tauri::AppHandle,
+    label: String,
+    script: String,
+) -> Result<(), String> {
+    app.get_webview(&label)
+        .ok_or_else(|| format!("Webview '{label}' not found"))?
+        .eval(&script)
+        .map_err(|e| e.to_string())
+}
+
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
@@ -118,7 +130,8 @@ pub fn run() {
             platform_profile,
             fetch_preview,
             list_history,
-            clear_browser_data
+            clear_browser_data,
+            eval_in_webview
         ])
         .run(tauri::generate_context!())
         .expect("error while running Lume");

@@ -1,191 +1,181 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { AlertTriangle, ExternalLink } from "lucide-react";
+import { webviewLabel, isTauriRuntime } from "@/lib/webview-utils";
 
-type NativeWebviewHostProps = {
+type Props = {
   tabId: string;
-  title: string;
   url: string;
 };
 
-type WebviewState = "idle" | "loading" | "ready" | "fallback" | "error";
+type VisualState = "loading" | "ready" | "error" | "fallback";
 
-const CHROME_COMPATIBLE_UA =
+const CHROME_UA =
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 " +
-  "(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36 Lume/0.1";
+  "(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36 Lume/1.0";
 
-function webviewLabel(tabId: string) {
-  return `lume-browser-${tabId.replace(/[^a-zA-Z0-9-/:_]/g, "_")}`;
-}
-
-function isTauriRuntime() {
-  return typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
-}
-
-export function NativeWebviewHost({ tabId, title, url }: NativeWebviewHostProps) {
+export function NativeWebviewHost({ tabId, url }: Props) {
   const hostRef = useRef<HTMLDivElement>(null);
-  const [state, setState] = useState<WebviewState>("idle");
-  const [message, setMessage] = useState("");
+  const [state, setState] = useState<VisualState>("loading");
+  const [errorMsg, setErrorMsg] = useState("");
   const label = useMemo(() => webviewLabel(tabId), [tabId]);
 
   useEffect(() => {
-    const hostElement = hostRef.current;
-
-    if (!hostElement) {
-      return;
-    }
-
-    const webviewHost: HTMLDivElement = hostElement;
+    const el = hostRef.current;
+    if (!el) return;
 
     if (!isTauriRuntime()) {
-      window.setTimeout(() => {
-        setState("fallback");
-        setMessage("Native WebView is available inside the installed Tauri app.");
-      }, 0);
+      setState("fallback");
       return;
     }
 
     let disposed = false;
-    let resizeObserver: ResizeObserver | null = null;
-    let cleanupWebview: (() => Promise<void>) | null = null;
+    let closeWebview: (() => void) | null = null;
+    let ro: ResizeObserver | null = null;
+    let removeBoundsListener: (() => void) | null = null;
 
-    async function mountWebview() {
-      setState("loading");
-      setMessage("");
+    // Capture non-null reference for use inside async closures
+    const hostEl: HTMLDivElement = el;
 
-      try {
-        const [{ LogicalPosition, LogicalSize }, { Webview }, { getCurrentWindow }] =
-          await Promise.all([
-            import("@tauri-apps/api/dpi"),
-            import("@tauri-apps/api/webview"),
-            import("@tauri-apps/api/window")
-          ]);
+    setState("loading");
+    setErrorMsg("");
 
-        const existing = await Webview.getByLabel(label);
+    async function mount() {
+      const [{ LogicalPosition, LogicalSize }, { Webview }, { getCurrentWindow }] =
+        await Promise.all([
+          import("@tauri-apps/api/dpi"),
+          import("@tauri-apps/api/webview"),
+          import("@tauri-apps/api/window"),
+        ]);
 
-        if (existing) {
-          await existing.close();
-        }
+      // Close stale webview with same label if it exists
+      const existing = await Webview.getByLabel(label);
+      if (existing) {
+        try { await existing.close(); } catch { /* already gone */ }
+      }
 
-        const rect = webviewHost.getBoundingClientRect();
-        const width = Math.max(120, Math.round(rect.width));
-        const height = Math.max(120, Math.round(rect.height));
-        const appWindow = getCurrentWindow();
-        const webview = new Webview(appWindow, label, {
-          url,
-          x: Math.round(rect.left),
-          y: Math.round(rect.top),
-          width,
-          height,
-          focus: true,
-          userAgent: CHROME_COMPATIBLE_UA,
-          zoomHotkeysEnabled: true,
-          dragDropEnabled: true,
-          dataDirectory: "browser-session",
-          backgroundColor: "#ffffff"
-        });
+      if (disposed) return;
 
-        cleanupWebview = async () => {
-          try {
-            await webview.close();
-          } catch (error) {
-            console.debug("Native WebView already closed.", error);
-          }
-        };
+      const rect = hostEl.getBoundingClientRect();
+      const appWindow = getCurrentWindow();
 
-        async function syncBounds() {
-          if (disposed) {
-            return;
-          }
+      const webview = new Webview(appWindow, label, {
+        url,
+        x: Math.round(rect.left),
+        y: Math.round(rect.top),
+        width: Math.max(100, Math.round(rect.width)),
+        height: Math.max(100, Math.round(rect.height)),
+        focus: true,
+        userAgent: CHROME_UA,
+        zoomHotkeysEnabled: true,
+        dragDropEnabled: true,
+        backgroundColor: "#ffffff",
+      });
 
-          const nextRect = webviewHost.getBoundingClientRect();
-          await Promise.all([
-            webview.setPosition(
-              new LogicalPosition(Math.round(nextRect.left), Math.round(nextRect.top))
-            ),
-            webview.setSize(
-              new LogicalSize(
-                Math.max(120, Math.round(nextRect.width)),
-                Math.max(120, Math.round(nextRect.height))
-              )
+      closeWebview = () => { void webview.close().catch(() => {}); };
+
+      async function syncBounds() {
+        if (disposed) return;
+        const r = hostEl.getBoundingClientRect();
+        await Promise.all([
+          webview.setPosition(new LogicalPosition(Math.round(r.left), Math.round(r.top))),
+          webview.setSize(
+            new LogicalSize(
+              Math.max(100, Math.round(r.width)),
+              Math.max(100, Math.round(r.height))
             )
-          ]);
-        }
+          ),
+        ]);
+      }
 
-        resizeObserver = new ResizeObserver(() => {
+      function onResize() { void syncBounds(); }
+      window.addEventListener("resize", onResize);
+      removeBoundsListener = () => window.removeEventListener("resize", onResize);
+
+      ro = new ResizeObserver(onResize);
+      ro.observe(hostEl);
+
+      webview.once("tauri://created", () => {
+        if (!disposed) {
+          setState("ready");
           void syncBounds();
-        });
-        resizeObserver.observe(webviewHost);
-        window.addEventListener("resize", syncBounds);
+        }
+      });
 
-        webview.once("tauri://created", () => {
-          if (!disposed) {
-            setState("ready");
-            void syncBounds();
-          }
-        });
-
-        webview.once("tauri://error", (event) => {
-          if (!disposed) {
-            setState("error");
-            setMessage(String(event.payload ?? "WebView failed to load."));
-          }
-        });
-
-        await syncBounds();
-
-        return () => {
-          window.removeEventListener("resize", syncBounds);
-        };
-      } catch (error) {
+      webview.once("tauri://error", (ev: unknown) => {
         if (!disposed) {
           setState("error");
-          setMessage(error instanceof Error ? error.message : String(error));
+          const payload = (ev as { payload?: unknown } | null)?.payload;
+          setErrorMsg(String(payload ?? "WebView failed to load."));
         }
+      });
 
-        return undefined;
-      }
+      await syncBounds();
     }
 
-    let cleanupBounds: (() => void) | undefined;
-    void mountWebview().then((cleanup) => {
-      cleanupBounds = cleanup;
+    void mount().catch((err) => {
+      if (!disposed) {
+        setState("error");
+        setErrorMsg(err instanceof Error ? err.message : String(err));
+      }
     });
 
     return () => {
       disposed = true;
-      cleanupBounds?.();
-      resizeObserver?.disconnect();
-      void cleanupWebview?.();
+      ro?.disconnect();
+      removeBoundsListener?.();
+      closeWebview?.();
     };
   }, [label, url]);
 
   return (
-    <div ref={hostRef} className="relative min-h-0 flex-1 overflow-hidden bg-white">
-      {state !== "ready" ? (
-        <div className="absolute inset-0 grid place-items-center bg-white p-8 text-center">
-          <div className="max-w-md">
-            <div className="mx-auto mb-4 grid h-11 w-11 place-items-center rounded-md bg-ember/12 text-ember">
-              <AlertTriangle size={19} />
-            </div>
-            <h2 className="mb-2 text-lg font-semibold text-ink">{title}</h2>
-            <p className="mb-4 break-words text-sm leading-6 text-ink/60">
-              {state === "loading"
-                ? "Opening page in native WebView..."
-                : message || "Native WebView is not ready."}
-            </p>
-            <a
-              href={url}
-              target="_blank"
-              className="inline-flex h-9 items-center gap-2 rounded-md bg-ink px-3 text-sm font-medium text-white transition hover:bg-ember"
-            >
-              <ExternalLink size={15} />
-              Open URL
-            </a>
+    <div
+      ref={hostRef}
+      className="relative flex-1 min-h-0 min-w-0"
+      style={{ background: state === "ready" ? "transparent" : "#fff" }}
+    >
+      {state === "loading" && (
+        <div className="absolute inset-0 flex items-center justify-center bg-white">
+          <div className="flex flex-col items-center gap-3">
+            <div className="h-5 w-5 animate-spin rounded-full border-2 border-black/10 border-t-ember" />
+            <p className="text-sm text-black/40">Loading…</p>
           </div>
         </div>
-      ) : null}
+      )}
+
+      {state === "error" && (
+        <div className="absolute inset-0 flex flex-col items-center justify-center gap-4 bg-white p-8 text-center">
+          <div className="text-4xl">⚠</div>
+          <p className="text-base font-semibold text-ink">Page failed to load</p>
+          <p className="max-w-sm break-words text-sm text-ink/50">
+            {errorMsg || "The WebView could not be created."}
+          </p>
+          <a
+            href={url}
+            target="_blank"
+            rel="noreferrer"
+            className="rounded-lg bg-ink px-4 py-2 text-sm font-medium text-white transition hover:bg-ember"
+          >
+            Open in system browser
+          </a>
+        </div>
+      )}
+
+      {state === "fallback" && (
+        <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-white p-8 text-center">
+          <p className="text-sm text-ink/40">
+            Native WebView is only available in the installed Lume app.
+          </p>
+          <a
+            href={url}
+            target="_blank"
+            rel="noreferrer"
+            className="rounded-lg bg-ink px-4 py-2 text-sm font-medium text-white transition hover:bg-ember"
+          >
+            Open in system browser
+          </a>
+        </div>
+      )}
     </div>
   );
 }
