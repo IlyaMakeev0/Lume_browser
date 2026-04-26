@@ -18,6 +18,22 @@ npm run build:windows:arm64
 
 Expected installer formats: `.exe` and `.msi`.
 
+Updater signatures are generated when `TAURI_SIGNING_PRIVATE_KEY_PATH` or
+`TAURI_SIGNING_PRIVATE_KEY` is available. The local default key path is
+`%USERPROFILE%\.tauri\lume-updater.key`; do not commit that private key.
+
+For GitHub Releases, upload the installer, matching `.sig` files, and a
+`latest.json` endpoint at:
+
+```text
+https://github.com/IlyaMakeev0/Lume_browser/releases/latest/download/latest.json
+```
+
+GitHub Actions should define these repository secrets before release builds:
+
+- `TAURI_SIGNING_PRIVATE_KEY`
+- `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` if the key has a password
+
 ## Android
 
 Command:

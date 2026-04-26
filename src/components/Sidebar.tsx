@@ -19,6 +19,7 @@ type SidebarProps = {
   onCreateTab: () => void;
   onSelectTab: (id: string) => void;
   onOpenCommandBar: () => void;
+  onOpenSettings: () => void;
 };
 
 const spaces = [
@@ -32,7 +33,8 @@ export function Sidebar({
   activeTabId,
   onCreateTab,
   onSelectTab,
-  onOpenCommandBar
+  onOpenCommandBar,
+  onOpenSettings
 }: SidebarProps) {
   return (
     <aside className="flex h-full w-[288px] shrink-0 flex-col border-r border-white/10 bg-ink/86 px-3 pb-4 pt-4 text-white shadow-soft backdrop-blur-2xl">
@@ -124,6 +126,7 @@ export function Sidebar({
       <div className="mt-4 space-y-1 border-t border-white/10 pt-3">
         <button
           type="button"
+          onClick={onOpenSettings}
           className="flex h-10 w-full items-center gap-3 rounded-md px-3 text-sm text-white/64 transition hover:bg-white/[0.08] hover:text-white"
         >
           <ShieldCheck size={16} />

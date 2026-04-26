@@ -3,6 +3,10 @@ use serde::Serialize;
 
 use crate::{document, parser, DocumentSnapshot};
 
+const DEFAULT_USER_AGENT: &str =
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 \
+     (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36 Lume/0.1";
+
 #[derive(Debug, Clone)]
 pub struct NetworkClient {
     client: reqwest::Client,
@@ -34,7 +38,7 @@ impl FetchPreview {
 impl Default for NetworkClient {
     fn default() -> Self {
         let client = reqwest::Client::builder()
-            .user_agent("Lume/0.1")
+            .user_agent(DEFAULT_USER_AGENT)
             .redirect(reqwest::redirect::Policy::limited(8))
             .build()
             .expect("failed to create reqwest client");

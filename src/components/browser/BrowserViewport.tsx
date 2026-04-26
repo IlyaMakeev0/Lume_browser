@@ -1,6 +1,7 @@
 "use client";
 
 import { ExternalLink, FileText, Images, Link2, ShieldAlert } from "lucide-react";
+import { NativeWebviewHost } from "@/components/browser/NativeWebviewHost";
 import type { BrowserTab, FetchPreview } from "@/types/tabs";
 
 type BrowserViewportProps = {
@@ -18,7 +19,7 @@ export function BrowserViewport({
   preview,
   loadingPreview
 }: BrowserViewportProps) {
-  const canEmbed = isWebUrl(activeTab?.url);
+  const canBrowse = isWebUrl(activeTab?.url);
 
   return (
     <div className="grid h-full min-h-0 grid-cols-[minmax(0,1fr)_320px] overflow-hidden rounded-md border border-ink/10 bg-white shadow-soft">
@@ -34,17 +35,16 @@ export function BrowserViewport({
           </div>
           <div className="flex items-center gap-2 rounded-md bg-ink px-3 py-2 text-sm font-medium text-white">
             <FileText size={16} className="text-mint" />
-            Engine preview
+            Native WebView
           </div>
         </div>
 
-        {canEmbed ? (
-          <iframe
-            key={activeTab?.url}
-            title={activeTab?.title ?? "Lume page"}
-            src={activeTab?.url}
-            className="h-full w-full border-0 bg-white"
-            sandbox="allow-forms allow-popups allow-same-origin allow-scripts"
+        {canBrowse && activeTab ? (
+          <NativeWebviewHost
+            key={`${activeTab.id}-${activeTab.url}`}
+            tabId={activeTab.id}
+            title={activeTab.title}
+            url={activeTab.url}
           />
         ) : (
           <div className="grid min-h-0 place-items-center bg-[linear-gradient(135deg,rgba(246,242,234,0.92),rgba(110,198,164,0.18))] p-8">
@@ -54,8 +54,8 @@ export function BrowserViewport({
                 Lume internal page
               </h2>
               <p className="max-w-xl text-base leading-7 text-ink/66">
-                Use Ctrl or Cmd + T to navigate. The shell updates tab state through
-                Tauri IPC and delegates URL resolution to the shared Rust engine.
+                Use Ctrl or Cmd + T to navigate. Web pages open in a native Tauri
+                WebView, while Lume keeps tab state and URL resolution in Rust.
               </p>
             </div>
           </div>
@@ -117,7 +117,7 @@ export function BrowserViewport({
             <p className="text-xs font-semibold uppercase text-ink/42">Body Preview</p>
           </div>
           <p className="h-full overflow-y-auto text-sm leading-6 text-ink/62">
-            {preview?.body_preview || "Rust fetch preview appears here after navigation."}
+            {preview?.body_preview || "Rust network preview appears here after navigation."}
           </p>
         </div>
 

@@ -1,3 +1,5 @@
+#[cfg(desktop)]
+mod app_updates;
 mod network_fetcher;
 mod platform;
 mod tabs_manager;
@@ -93,9 +95,20 @@ fn platform_profile() -> PlatformProfile {
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
+        .setup(|app| {
+            #[cfg(desktop)]
+            app.handle()
+                .plugin(tauri_plugin_updater::Builder::new().build())?;
+
+            Ok(())
+        })
         .manage(Mutex::new(TabsManager::with_home_tab()))
         .manage(NetworkFetcher::default())
         .invoke_handler(tauri::generate_handler![
+            #[cfg(desktop)]
+            app_updates::check_app_update,
+            #[cfg(desktop)]
+            app_updates::install_app_update,
             list_tabs,
             create_tab,
             activate_tab,

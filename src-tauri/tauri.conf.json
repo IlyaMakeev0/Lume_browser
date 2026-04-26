@@ -31,6 +31,18 @@
     "active": true,
     "icon": ["icons/icon.ico"],
     "targets": "all",
-    "category": "Productivity"
+    "category": "Productivity",
+    "createUpdaterArtifacts": true
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDcwQ0MyNTlCMzdEMzRDQzYKUldUR1ROTTNteVhNY0x2SVNWUGk1R3lGVE9wam92WCtBa0J0RGpLYS9URm5kQ1lBc0NiQXF3RG4K",
+      "endpoints": [
+        "https://github.com/IlyaMakeev0/Lume_browser/releases/latest/download/latest.json"
+      ],
+      "windows": {
+        "installMode": "passive"
+      }
+    }
   }
 }

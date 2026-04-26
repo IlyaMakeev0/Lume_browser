@@ -4,8 +4,14 @@ import { type FormEvent, useCallback, useEffect, useMemo, useState } from "react
 import { ArrowLeft, ArrowRight, Cpu, Lock, RefreshCw } from "lucide-react";
 import { BrowserViewport } from "@/components/browser/BrowserViewport";
 import { CommandBar } from "@/components/CommandBar";
+import { SettingsPanel } from "@/components/SettingsPanel";
 import { Sidebar } from "@/components/Sidebar";
 import { Titlebar } from "@/components/Titlebar";
+import {
+  applyPreferences,
+  readPreferences,
+  writePreferences
+} from "@/lib/preferences";
 import { invokeCommand } from "@/lib/tauri";
 import type {
   BrowserTab,
@@ -13,6 +19,7 @@ import type {
   NewTabRequest,
   PlatformProfile
 } from "@/types/tabs";
+import type { UserPreferences } from "@/types/preferences";
 
 const fallbackTabs: BrowserTab[] = [
   {
@@ -65,14 +72,18 @@ function resolveLocalNavigation(input: string) {
     };
   }
 
-  if (/^[^\s/]+\.[^\s]+/.test(trimmed) || trimmed.startsWith("localhost")) {
-    const url = trimmed.startsWith("localhost")
-      ? `http://${trimmed}`
-      : `https://${trimmed}`;
+  if (looksLikeHost(trimmed)) {
+    const host = hostCandidate(trimmed) ?? trimmed;
+    const scheme = isLocalOrIpHost(host) ? "http" : "https";
+    const normalizedInput =
+      isRawIpv6Host(host) && !trimmed.startsWith("[")
+        ? trimmed.replace(host, `[${host}]`)
+        : trimmed;
+    const normalized = `${scheme}://${normalizedInput}`;
 
     return {
-      title: new URL(url).hostname,
-      url
+      title: new URL(normalized).hostname,
+      url: normalized
     };
   }
 
@@ -82,6 +93,46 @@ function resolveLocalNavigation(input: string) {
   };
 }
 
+function looksLikeHost(input: string) {
+  if (/\s/.test(input)) {
+    return false;
+  }
+
+  const host = hostCandidate(input);
+
+  return Boolean(host && (host.includes(".") || isLocalOrIpHost(host)));
+}
+
+function hostCandidate(input: string) {
+  const firstToken = input.split("/")[0]?.trim();
+
+  if (!firstToken) {
+    return null;
+  }
+
+  if (firstToken.startsWith("[")) {
+    return firstToken.slice(1).split("]")[0] ?? null;
+  }
+
+  if (isRawIpv6Host(firstToken)) {
+    return firstToken;
+  }
+
+  return firstToken.split(":")[0] ?? firstToken;
+}
+
+function isLocalOrIpHost(host: string) {
+  return (
+    host.toLowerCase() === "localhost" ||
+    /^(\d{1,3}\.){3}\d{1,3}$/.test(host) ||
+    isRawIpv6Host(host)
+  );
+}
+
+function isRawIpv6Host(host: string) {
+  return host.includes(":") && /^[0-9a-f:]+$/i.test(host);
+}
+
 function isPreviewableUrl(url?: string) {
   return Boolean(url?.startsWith("http://") || url?.startsWith("https://"));
 }
@@ -89,8 +140,10 @@ function isPreviewableUrl(url?: string) {
 export default function Home() {
   const [tabs, setTabs] = useState<BrowserTab[]>(fallbackTabs);
   const [commandOpen, setCommandOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const [preview, setPreview] = useState<FetchPreview | null>(null);
   const [platformProfile, setPlatformProfile] = useState<PlatformProfile | null>(null);
+  const [preferences, setPreferences] = useState<UserPreferences>(() => readPreferences());
 
   const activeTab = useMemo(
     () => tabs.find((tab) => tab.is_active) ?? tabs[0],
@@ -118,6 +171,10 @@ export default function Home() {
       isMounted = false;
     };
   }, []);
+
+  useEffect(() => {
+    applyPreferences(preferences);
+  }, [preferences]);
 
   useEffect(() => {
     let isMounted = true;
@@ -252,6 +309,11 @@ export default function Home() {
     }
   }
 
+  function updatePreferences(nextPreferences: UserPreferences) {
+    setPreferences(nextPreferences);
+    writePreferences(nextPreferences);
+  }
+
   const loadingPreview =
     Boolean(activeTab?.url) &&
     isPreviewableUrl(activeTab?.url) &&
@@ -265,6 +327,12 @@ export default function Home() {
         onOpenChange={setCommandOpen}
         onNavigate={navigateTo}
       />
+      <SettingsPanel
+        open={settingsOpen}
+        preferences={preferences}
+        onChange={updatePreferences}
+        onClose={() => setSettingsOpen(false)}
+      />
 
       <main className="flex h-full pt-9">
         <Sidebar
@@ -273,6 +341,7 @@ export default function Home() {
           onCreateTab={createTab}
           onSelectTab={selectTab}
           onOpenCommandBar={() => setCommandOpen(true)}
+          onOpenSettings={() => setSettingsOpen(true)}
         />
 
         <section className="flex min-w-0 flex-1 flex-col bg-shell">
@@ -322,7 +391,13 @@ export default function Home() {
             </div>
           </div>
 
-          <div className="min-h-0 flex-1 overflow-hidden p-6">
+          <div
+            className={
+              preferences.density === "compact"
+                ? "min-h-0 flex-1 overflow-hidden p-3"
+                : "min-h-0 flex-1 overflow-hidden p-6"
+            }
+          >
             <BrowserViewport
               activeTab={activeTab}
               preview={preview}

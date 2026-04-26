@@ -15,8 +15,6 @@ jobs:
         include:
           - arch: x86_64
             target: x86_64-pc-windows-msvc
-          - arch: arm64
-            target: aarch64-pc-windows-msvc
 
     steps:
       - uses: actions/checkout@v4
@@ -34,6 +32,9 @@ jobs:
         run: npm ci
 
       - name: Build Windows installer
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         run: powershell -ExecutionPolicy Bypass -File scripts/build-windows.ps1 -Target ${{ matrix.target }}
 
       - name: Upload installer artifacts

@@ -9,6 +9,21 @@ $ErrorActionPreference = "Stop"
 $repoRoot = Resolve-Path -LiteralPath (Join-Path $PSScriptRoot "..")
 Set-Location $repoRoot
 
+function Get-NodePath {
+  $nodeCommand = Get-Command node -ErrorAction SilentlyContinue
+  if ($nodeCommand -and $nodeCommand.Source -notlike "*WindowsApps\OpenAI.Codex*") {
+    return $nodeCommand.Source
+  }
+
+  $bundledNode = Join-Path $env:USERPROFILE ".cache\codex-runtimes\codex-primary-runtime\dependencies\node\bin\node.exe"
+  if (Test-Path -LiteralPath $bundledNode) {
+    return $bundledNode
+  }
+
+  throw "Node.js was not found. Install Node.js 20+ or make node available in PATH."
+}
+
+$nodePath = Get-NodePath
 $cargoBin = Join-Path $env:USERPROFILE ".cargo\bin"
 if (Test-Path -LiteralPath $cargoBin) {
   $env:PATH = "$cargoBin;$env:PATH"
@@ -28,7 +43,23 @@ $artifactDir = Join-Path $repoRoot "apps\windows\installers\$archName"
 New-Item -ItemType Directory -Force -Path $artifactDir | Out-Null
 
 if (-not $SkipFrontendBuild) {
-  npm run build
+  if (Get-Command npm -ErrorAction SilentlyContinue) {
+    npm run build
+  } else {
+    & $nodePath ".\node_modules\next\dist\bin\next" build
+  }
+
+  if ($LASTEXITCODE -ne 0) {
+    throw "Frontend build failed with exit code $LASTEXITCODE."
+  }
+}
+
+$defaultSigningKey = Join-Path $env:USERPROFILE ".tauri\lume-updater.key"
+if (
+  -not $env:TAURI_SIGNING_PRIVATE_KEY -and
+  (Test-Path -LiteralPath $defaultSigningKey)
+) {
+  $env:TAURI_SIGNING_PRIVATE_KEY = (Get-Content -Raw -LiteralPath $defaultSigningKey).Trim()
 }
 
 $vswhere = Join-Path ${env:ProgramFiles(x86)} "Microsoft Visual Studio\Installer\vswhere.exe"
@@ -58,7 +89,16 @@ if ($SkipFrontendBuild) {
   $extraConfigArg = "--config `"$skipConfig`""
 }
 
-$command = "`"$devCmd`" -arch=$vsArch -host_arch=x64 && set PATH=%USERPROFILE%\.cargo\bin;%PATH% && npm run tauri -- build --target $Target --bundles nsis,msi $extraConfigArg --ci"
+$tauriCli = Join-Path $repoRoot "node_modules\@tauri-apps\cli\tauri.js"
+if (Get-Command npm -ErrorAction SilentlyContinue) {
+  $tauriCommand = "npm run tauri -- build --target $Target --bundles nsis,msi $extraConfigArg --ci"
+} elseif (Test-Path -LiteralPath $tauriCli) {
+  $tauriCommand = "`"$nodePath`" `"$tauriCli`" build --target $Target --bundles nsis,msi $extraConfigArg --ci"
+} else {
+  throw "Tauri CLI was not found. Run npm install before building installers."
+}
+
+$command = "`"$devCmd`" -arch=$vsArch -host_arch=x64 && set PATH=%USERPROFILE%\.cargo\bin;%PATH% && $tauriCommand"
 cmd /c $command
 if ($LASTEXITCODE -ne 0) {
   throw "Tauri Windows build failed with exit code $LASTEXITCODE."
@@ -76,7 +116,35 @@ if (-not $bundleRoot) {
   throw "Tauri bundle output was not found in: $($candidateBundleRoots -join ', ')"
 }
 
-Get-ChildItem -LiteralPath $bundleRoot -Recurse -File -Include *.exe,*.msi |
+Get-ChildItem -LiteralPath $bundleRoot -Recurse -File -Include *.exe,*.msi,*.sig,latest.json |
   Copy-Item -Destination $artifactDir -Force
+
+$setupInstaller = Get-ChildItem -LiteralPath $artifactDir -File -Filter "*setup.exe" |
+  Sort-Object LastWriteTime -Descending |
+  Select-Object -First 1
+
+if ($setupInstaller) {
+  $signaturePath = "$($setupInstaller.FullName).sig"
+
+  if (Test-Path -LiteralPath $signaturePath) {
+    $tauriConfig = Get-Content -Raw -LiteralPath (Join-Path $repoRoot "src-tauri\tauri.conf.json") |
+      ConvertFrom-Json
+    $platformKey = if ($Target -eq "aarch64-pc-windows-msvc") { "windows-aarch64" } else { "windows-x86_64" }
+    $releaseBaseUrl = "https://github.com/IlyaMakeev0/Lume_browser/releases/latest/download"
+    $latestJson = [ordered]@{
+      version = $tauriConfig.version
+      notes = "Lume Windows $archName release."
+      pub_date = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
+      platforms = [ordered]@{
+        $platformKey = [ordered]@{
+          signature = (Get-Content -Raw -LiteralPath $signaturePath).Trim()
+          url = "$releaseBaseUrl/$($setupInstaller.Name)"
+        }
+      }
+    } | ConvertTo-Json -Depth 6
+
+    Set-Content -LiteralPath (Join-Path $artifactDir "latest.json") -Value $latestJson -Encoding UTF8
+  }
+}
 
 Write-Output "Windows $archName installers copied to $artifactDir"

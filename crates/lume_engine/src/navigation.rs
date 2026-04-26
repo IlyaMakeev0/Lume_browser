@@ -1,4 +1,5 @@
 use serde::Serialize;
+use std::net::IpAddr;
 use url::{form_urlencoded, Url};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -38,11 +39,7 @@ pub fn resolve(input: &str) -> Result<NavigationTarget, String> {
     }
 
     if looks_like_host(trimmed) {
-        let normalized = if trimmed.starts_with("localhost") || trimmed.starts_with("127.0.0.1") {
-            format!("http://{trimmed}")
-        } else {
-            format!("https://{trimmed}")
-        };
+        let normalized = normalize_host_input(trimmed);
 
         let url = Url::parse(&normalized).map_err(|error| error.to_string())?;
         return Ok(url_target(trimmed, url));
@@ -86,10 +83,49 @@ fn internal_title(input: &str) -> String {
 }
 
 fn looks_like_host(input: &str) -> bool {
-    let first_token = input.split('/').next().unwrap_or(input);
+    if input.contains(char::is_whitespace) {
+        return false;
+    }
 
-    (first_token.contains('.') || first_token.eq_ignore_ascii_case("localhost"))
-        && !input.contains(char::is_whitespace)
+    let Some(host) = host_candidate(input) else {
+        return false;
+    };
+
+    host.eq_ignore_ascii_case("localhost") || host.parse::<IpAddr>().is_ok() || host.contains('.')
+}
+
+fn normalize_host_input(input: &str) -> String {
+    let host = host_candidate(input).unwrap_or(input);
+    let scheme = if host.eq_ignore_ascii_case("localhost") || host.parse::<IpAddr>().is_ok() {
+        "http"
+    } else {
+        "https"
+    };
+
+    if host.parse::<IpAddr>().is_ok() && host.contains(':') && !input.starts_with('[') {
+        let bracketed_host = format!("[{host}]");
+        format!("{scheme}://{}", input.replacen(host, &bracketed_host, 1))
+    } else {
+        format!("{scheme}://{input}")
+    }
+}
+
+fn host_candidate(input: &str) -> Option<&str> {
+    let first_token = input.split('/').next().unwrap_or(input).trim();
+
+    if first_token.is_empty() {
+        return None;
+    }
+
+    if let Some(without_opening_bracket) = first_token.strip_prefix('[') {
+        return without_opening_bracket.split(']').next();
+    }
+
+    if first_token.parse::<IpAddr>().is_ok() {
+        return Some(first_token);
+    }
+
+    Some(first_token.split(':').next().unwrap_or(first_token))
 }
 
 #[cfg(test)]
@@ -102,6 +138,30 @@ mod tests {
 
         assert_eq!(target.kind, NavigationKind::Url);
         assert_eq!(target.resolved_url, "https://example.com/");
+    }
+
+    #[test]
+    fn resolves_ipv4_address_to_http_url() {
+        let target = resolve("192.168.1.22:8080").unwrap();
+
+        assert_eq!(target.kind, NavigationKind::Url);
+        assert_eq!(target.resolved_url, "http://192.168.1.22:8080/");
+    }
+
+    #[test]
+    fn resolves_bracketed_ipv6_address_to_http_url() {
+        let target = resolve("[::1]:3000").unwrap();
+
+        assert_eq!(target.kind, NavigationKind::Url);
+        assert_eq!(target.resolved_url, "http://[::1]:3000/");
+    }
+
+    #[test]
+    fn resolves_raw_ipv6_address_to_http_url() {
+        let target = resolve("::1").unwrap();
+
+        assert_eq!(target.kind, NavigationKind::Url);
+        assert_eq!(target.resolved_url, "http://[::1]/");
     }
 
     #[test]

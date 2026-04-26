@@ -4,8 +4,64 @@
 
 :root {
   color-scheme: light;
+  --color-ink: 21 20 18;
+  --color-shell: 246 242 234;
+  --color-ember: 240 111 60;
+  --color-mint: 110 198 164;
+  --color-brass: 182 139 72;
+  --font-ui:
+    Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
+    sans-serif;
+  --app-background:
+    radial-gradient(circle at top left, rgba(240, 111, 60, 0.26), transparent 34rem),
+    linear-gradient(135deg, #161411 0%, #2a241e 42%, #0f1b18 100%);
   background: #151412;
   color: #151412;
+}
+
+html[data-theme="graphite"] {
+  --color-ink: 17 24 39;
+  --color-shell: 238 242 247;
+  --color-ember: 56 189 248;
+  --color-mint: 52 211 153;
+  --color-brass: 249 115 22;
+  --app-background:
+    radial-gradient(circle at top left, rgba(56, 189, 248, 0.22), transparent 32rem),
+    linear-gradient(135deg, #0b1220 0%, #1f2937 48%, #111827 100%);
+}
+
+html[data-theme="arctic"] {
+  --color-ink: 16 32 51;
+  --color-shell: 244 249 253;
+  --color-ember: 47 128 237;
+  --color-mint: 48 197 162;
+  --color-brass: 139 92 246;
+  --app-background:
+    radial-gradient(circle at top left, rgba(47, 128, 237, 0.24), transparent 32rem),
+    linear-gradient(135deg, #0b1b2e 0%, #dceaf7 54%, #edf7fb 100%);
+}
+
+html[data-theme="solar"] {
+  --color-ink: 39 33 15;
+  --color-shell: 255 247 223;
+  --color-ember: 217 119 6;
+  --color-mint: 34 197 94;
+  --color-brass: 15 118 110;
+  --app-background:
+    radial-gradient(circle at top left, rgba(217, 119, 6, 0.24), transparent 32rem),
+    linear-gradient(135deg, #201909 0%, #f2d184 52%, #f7f0d3 100%);
+}
+
+html[data-font="serif"] {
+  --font-ui: Georgia, "Times New Roman", serif;
+}
+
+html[data-font="mono"] {
+  --font-ui: "Cascadia Mono", "JetBrains Mono", Consolas, monospace;
+}
+
+html[data-font="wide"] {
+  --font-ui: Verdana, Geneva, Tahoma, sans-serif;
 }
 
 * {
@@ -20,12 +76,8 @@ body {
 
 body {
   overflow: hidden;
-  background:
-    radial-gradient(circle at top left, rgba(240, 111, 60, 0.26), transparent 34rem),
-    linear-gradient(135deg, #161411 0%, #2a241e 42%, #0f1b18 100%);
-  font-family:
-    Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
-    sans-serif;
+  background: var(--app-background);
+  font-family: var(--font-ui);
 }
 
 [data-tauri-drag-region] {
