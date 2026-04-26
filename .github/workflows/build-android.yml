@@ -1,0 +1,52 @@
+name: Build Android Artifacts
+
+on:
+  workflow_dispatch:
+
+jobs:
+  android:
+    name: Android APK and AAB
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - uses: android-actions/setup-android@v3
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android,armv7-linux-androideabi,i686-linux-android,x86_64-linux-android
+
+      - name: Install frontend dependencies
+        run: npm ci
+
+      - name: Initialize Android project if missing
+        run: |
+          if [ ! -d src-tauri/gen/android ]; then
+            npm run tauri -- android init
+          fi
+
+      - name: Build Android artifacts
+        run: npm run tauri -- android build
+
+      - name: Collect APK/AAB
+        run: |
+          mkdir -p apps/android/installers
+          find src-tauri/gen/android/app/build/outputs -type f \( -name "*.apk" -o -name "*.aab" \) -exec cp {} apps/android/installers/ \;
+
+      - name: Upload Android artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: lume-android
+          path: apps/android/installers/*
+          if-no-files-found: error
