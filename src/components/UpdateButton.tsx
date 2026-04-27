@@ -21,7 +21,7 @@ export function UpdateButton() {
 
     if (!result) {
       setPhase("error");
-      setErrorMsg("Updater unavailable (dev build)");
+      setErrorMsg("Updater unavailable in this build");
       return;
     }
 
@@ -49,13 +49,12 @@ export function UpdateButton() {
     setPhase("done");
   }
 
-  /* ── Idle: single "Check for updates" button ── */
   if (phase === "idle") {
     return (
       <button
         type="button"
         onClick={check}
-        className="flex h-9 w-full items-center gap-2.5 rounded-lg px-2.5 text-[13px] text-white/48 transition hover:bg-white/8 hover:text-white"
+        className="flex h-9 w-full items-center gap-2.5 rounded-lg px-2.5 text-[13px] text-white/75 transition hover:bg-white/10 hover:text-white"
       >
         <ArrowUpCircle size={15} />
         Check for updates
@@ -63,20 +62,18 @@ export function UpdateButton() {
     );
   }
 
-  /* ── Checking ── */
   if (phase === "checking") {
     return (
       <div className="flex h-9 items-center gap-2.5 rounded-lg px-2.5 text-[13px] text-white/40">
         <Loader size={14} className="animate-spin" />
-        Checking GitHub…
+        Checking GitHub...
       </div>
     );
   }
 
-  /* ── Up to date ── */
   if (phase === "up-to-date") {
     return (
-      <div className="rounded-lg border border-white/8 bg-white/5 px-3 py-2">
+      <div className="rounded-lg border border-white/10 bg-white/5 px-3 py-2">
         <div className="mb-1 flex items-center gap-2 text-[12px] text-mint">
           <CheckCircle size={13} />
           Up to date {currentVersion ? `(v${currentVersion})` : ""}
@@ -92,10 +89,9 @@ export function UpdateButton() {
     );
   }
 
-  /* ── Update available ── */
   if (phase === "available") {
     return (
-      <div className="rounded-lg border border-ember/30 bg-ember/8 px-3 py-2">
+      <div className="rounded-lg border border-ember/30 bg-ember/10 px-3 py-2">
         <div className="mb-1.5 text-[12px] font-medium text-ember">
           v{newVersion} available
         </div>
@@ -120,30 +116,25 @@ export function UpdateButton() {
     );
   }
 
-  /* ── Installing ── */
   if (phase === "installing") {
     return (
       <div className="flex h-9 items-center gap-2.5 rounded-lg px-2.5 text-[13px] text-white/40">
         <Loader size={14} className="animate-spin" />
-        Installing update…
+        Installing update...
       </div>
     );
   }
 
-  /* ── Done ── */
   if (phase === "done") {
     return (
-      <div className="rounded-lg border border-mint/20 bg-mint/8 px-3 py-2">
-        <div className="text-[12px] text-mint">
-          Installed! Restart to apply.
-        </div>
+      <div className="rounded-lg border border-mint/20 bg-mint/10 px-3 py-2">
+        <div className="text-[12px] text-mint">Installed! Restart to apply.</div>
       </div>
     );
   }
 
-  /* ── Error ── */
   return (
-    <div className="rounded-lg border border-white/8 bg-white/5 px-3 py-2">
+    <div className="rounded-lg border border-white/10 bg-white/5 px-3 py-2">
       <div className="mb-1 text-[11px] text-white/40">{errorMsg}</div>
       <button
         type="button"

@@ -1,4 +1,4 @@
-use lume_engine::{BrowserEngine, FetchPreview, HistoryEntry, NavigationTarget};
+use lume_engine::{BrowserEngine, FetchPreview, HistoryEntry, NavigationTarget, NetworkProbe};
 
 #[derive(Debug, Clone)]
 pub struct NetworkFetcher {
@@ -22,8 +22,16 @@ impl NetworkFetcher {
         self.engine.load_preview(url).await
     }
 
+    pub async fn probe(&self, url: &str) -> Result<NetworkProbe, String> {
+        self.engine.probe(url).await
+    }
+
     pub fn history(&self) -> Result<Vec<HistoryEntry>, String> {
         self.engine.history()
+    }
+
+    pub fn record_navigation(&self, target: &NavigationTarget) {
+        self.engine.record_navigation_visit(target);
     }
 
     pub fn clear_history(&self) -> Result<(), String> {

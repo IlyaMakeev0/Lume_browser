@@ -1,5 +1,6 @@
 use reqwest::header::CONTENT_TYPE;
 use serde::Serialize;
+use std::time::Duration;
 
 use crate::{document, parser, DocumentSnapshot};
 
@@ -22,6 +23,15 @@ pub struct FetchPreview {
     pub body_preview: String,
 }
 
+#[derive(Debug, Clone, Serialize)]
+pub struct NetworkProbe {
+    pub url: String,
+    pub final_url: Option<String>,
+    pub reachable: bool,
+    pub status: Option<u16>,
+    pub error: Option<String>,
+}
+
 impl FetchPreview {
     pub fn internal(url: String) -> Self {
         Self {
@@ -40,6 +50,8 @@ impl Default for NetworkClient {
         let client = reqwest::Client::builder()
             .user_agent(DEFAULT_USER_AGENT)
             .redirect(reqwest::redirect::Policy::limited(8))
+            .connect_timeout(Duration::from_secs(6))
+            .timeout(Duration::from_secs(12))
             .build()
             .expect("failed to create reqwest client");
 
@@ -48,6 +60,34 @@ impl Default for NetworkClient {
 }
 
 impl NetworkClient {
+    pub async fn probe(&self, url: &str) -> NetworkProbe {
+        match self.client.head(url).send().await {
+            Ok(response) => NetworkProbe {
+                url: url.to_string(),
+                final_url: Some(response.url().to_string()),
+                reachable: true,
+                status: Some(response.status().as_u16()),
+                error: None,
+            },
+            Err(head_error) => match self.client.get(url).send().await {
+                Ok(response) => NetworkProbe {
+                    url: url.to_string(),
+                    final_url: Some(response.url().to_string()),
+                    reachable: true,
+                    status: Some(response.status().as_u16()),
+                    error: None,
+                },
+                Err(get_error) => NetworkProbe {
+                    url: url.to_string(),
+                    final_url: None,
+                    reachable: false,
+                    status: None,
+                    error: Some(format!("{head_error}; {get_error}")),
+                },
+            },
+        }
+    }
+
     pub async fn fetch_preview(&self, url: &str) -> Result<FetchPreview, String> {
         let response = self
             .client

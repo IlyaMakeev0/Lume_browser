@@ -23,6 +23,14 @@ export type FetchPreview = {
   body_preview: string;
 };
 
+export type NetworkProbe = {
+  url: string;
+  final_url?: string | null;
+  reachable: boolean;
+  status?: number | null;
+  error?: string | null;
+};
+
 export type DocumentSnapshot = {
   url: string;
   title?: string | null;

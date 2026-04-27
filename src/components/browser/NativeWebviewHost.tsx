@@ -25,7 +25,7 @@ export function NativeWebviewHost({ tabId, url }: Props) {
     if (!el) return;
 
     if (!isTauriRuntime()) {
-      setState("fallback");
+      window.setTimeout(() => setState("fallback"), 0);
       return;
     }
 
@@ -36,9 +36,6 @@ export function NativeWebviewHost({ tabId, url }: Props) {
 
     // Capture non-null reference for use inside async closures
     const hostEl: HTMLDivElement = el;
-
-    setState("loading");
-    setErrorMsg("");
 
     async function mount() {
       const [{ LogicalPosition, LogicalSize }, { Webview }, { getCurrentWindow }] =
@@ -138,14 +135,14 @@ export function NativeWebviewHost({ tabId, url }: Props) {
         <div className="absolute inset-0 flex items-center justify-center bg-white">
           <div className="flex flex-col items-center gap-3">
             <div className="h-5 w-5 animate-spin rounded-full border-2 border-black/10 border-t-ember" />
-            <p className="text-sm text-black/40">Loading…</p>
+            <p className="text-sm text-black/40">Loading...</p>
           </div>
         </div>
       )}
 
       {state === "error" && (
         <div className="absolute inset-0 flex flex-col items-center justify-center gap-4 bg-white p-8 text-center">
-          <div className="text-4xl">⚠</div>
+          <div className="text-4xl">!</div>
           <p className="text-base font-semibold text-ink">Page failed to load</p>
           <p className="max-w-sm break-words text-sm text-ink/50">
             {errorMsg || "The WebView could not be created."}

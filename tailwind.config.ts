@@ -1,5 +1,9 @@
 import type { Config } from "tailwindcss";
 
+const opacityScale = Object.fromEntries(
+  Array.from({ length: 101 }, (_, value) => [String(value), String(value / 100)])
+);
+
 const config: Config = {
   content: ["./src/**/*.{js,ts,jsx,tsx,mdx}"],
   theme: {
@@ -13,7 +17,8 @@ const config: Config = {
       },
       boxShadow: {
         soft: "0 18px 60px rgba(19, 18, 15, 0.16)"
-      }
+      },
+      opacity: opacityScale
     }
   },
   plugins: []

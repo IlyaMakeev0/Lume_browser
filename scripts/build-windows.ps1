@@ -43,6 +43,18 @@ $artifactDir = Join-Path $repoRoot "apps\windows\installers\$archName"
 New-Item -ItemType Directory -Force -Path $artifactDir | Out-Null
 
 if (-not $SkipFrontendBuild) {
+  $frontendDist = Join-Path $repoRoot "dist"
+  $resolvedRepoRoot = [System.IO.Path]::GetFullPath($repoRoot)
+  $resolvedFrontendDist = [System.IO.Path]::GetFullPath($frontendDist)
+
+  if ($resolvedFrontendDist -ne [System.IO.Path]::Combine($resolvedRepoRoot, "dist")) {
+    throw "Refusing to clean unexpected frontend output path: $resolvedFrontendDist"
+  }
+
+  if (Test-Path -LiteralPath $frontendDist) {
+    Remove-Item -LiteralPath $frontendDist -Recurse -Force
+  }
+
   if (Get-Command npm -ErrorAction SilentlyContinue) {
     npm run build
   } else {
@@ -102,6 +114,24 @@ $command = "`"$devCmd`" -arch=$vsArch -host_arch=x64 && set PATH=%USERPROFILE%\.
 cmd /c $command
 if ($LASTEXITCODE -ne 0) {
   throw "Tauri Windows build failed with exit code $LASTEXITCODE."
+}
+
+$candidateAppExePaths = @(
+  (Join-Path $repoRoot "src-tauri\target\$Target\release\lume.exe"),
+  (Join-Path $repoRoot "target\$Target\release\lume.exe")
+)
+
+$appExe = $candidateAppExePaths | Where-Object { Test-Path -LiteralPath $_ } | Select-Object -First 1
+if ($appExe) {
+  $portableDir = Join-Path $repoRoot "target\release"
+  New-Item -ItemType Directory -Force -Path $portableDir | Out-Null
+  Copy-Item -LiteralPath $appExe -Destination (Join-Path $portableDir "lume_portable_production.exe") -Force
+
+  try {
+    Copy-Item -LiteralPath $appExe -Destination (Join-Path $portableDir "lume.exe") -Force
+  } catch {
+    Write-Warning "Could not replace target\release\lume.exe. Close running Lume processes and rerun this script."
+  }
 }
 
 $candidateBundleRoots = @(

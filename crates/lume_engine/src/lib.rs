@@ -12,7 +12,7 @@ pub use cache::{CachedDocument, MemoryCache};
 pub use document::{DocumentSnapshot, LinkCandidate, ResourceCounts};
 pub use history::{HistoryEntry, HistoryStore};
 pub use navigation::{NavigationKind, NavigationTarget};
-pub use network::{FetchPreview, NetworkClient};
+pub use network::{FetchPreview, NetworkClient, NetworkProbe};
 
 #[derive(Debug, Clone)]
 pub struct BrowserEngine {
@@ -67,9 +67,29 @@ impl BrowserEngine {
         Ok(preview)
     }
 
+    pub async fn probe(&self, input: &str) -> Result<NetworkProbe, String> {
+        let target = self.resolve_allowed_navigation(input)?;
+
+        if target.kind == NavigationKind::Internal {
+            return Ok(NetworkProbe {
+                url: target.resolved_url,
+                final_url: None,
+                reachable: true,
+                status: Some(200),
+                error: None,
+            });
+        }
+
+        Ok(self.network.probe(&target.resolved_url).await)
+    }
+
     pub fn history(&self) -> Result<Vec<HistoryEntry>, String> {
         let history = self.history.lock().map_err(|error| error.to_string())?;
         Ok(history.entries())
+    }
+
+    pub fn record_navigation_visit(&self, target: &NavigationTarget) {
+        self.record_history(target, Some(target.display_title.clone()));
     }
 
     pub fn clear_history(&self) -> Result<(), String> {

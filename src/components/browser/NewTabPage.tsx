@@ -1,7 +1,7 @@
 "use client";
 
 import { FormEvent, useEffect, useRef, useState } from "react";
-import { ArrowRight, Search } from "lucide-react";
+import { Search } from "lucide-react";
 
 type Props = {
   onNavigate: (input: string) => Promise<void>;
@@ -69,7 +69,7 @@ export function NewTabPage({ onNavigate }: Props) {
           ref={inputRef}
           value={input}
           onChange={(e) => setInput(e.target.value)}
-          placeholder="Search or enter URL…"
+          placeholder="Search or enter URL..."
           className="min-w-0 flex-1 bg-transparent text-base text-white outline-none placeholder:text-white/30"
         />
         {input && (

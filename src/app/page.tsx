@@ -6,26 +6,19 @@ import {
   useEffect,
   useMemo,
   useRef,
-  useState,
+  useState
 } from "react";
-import {
-  ArrowLeft,
-  ArrowRight,
-  Lock,
-  RefreshCw,
-  Settings,
-  X,
-} from "lucide-react";
+import { ArrowLeft, ArrowRight, Home as HomeIcon, Lock, RefreshCw, Settings, X } from "lucide-react";
 import { BrowserViewport } from "@/components/browser/BrowserViewport";
 import { CommandBar } from "@/components/CommandBar";
 import { SettingsPanel } from "@/components/SettingsPanel";
 import { Sidebar } from "@/components/Sidebar";
 import { Titlebar } from "@/components/Titlebar";
 import { applyPreferences, readPreferences, writePreferences } from "@/lib/preferences";
-import { evalInWebview } from "@/lib/webview-utils";
 import { invokeCommand } from "@/lib/tauri";
+import { evalInWebview } from "@/lib/webview-utils";
+import type { SearchEngineId, UserPreferences } from "@/types/preferences";
 import type { BrowserTab, NewTabRequest } from "@/types/tabs";
-import type { UserPreferences } from "@/types/preferences";
 
 const INIT_TAB: BrowserTab = {
   id: "init-1",
@@ -33,34 +26,114 @@ const INIT_TAB: BrowserTab = {
   url: "lume://new-tab",
   is_active: true,
   pinned: false,
-  space: "Focus",
+  space: "Focus"
+};
+
+const DEFAULT_SPACE = "Focus";
+
+const SEARCH_ENGINES: Record<SearchEngineId, (query: string) => string> = {
+  google: (query) => `https://www.google.com/search?q=${query}`,
+  duckduckgo: (query) => `https://duckduckgo.com/?q=${query}`,
+  bing: (query) => `https://www.bing.com/search?q=${query}`,
+  yandex: (query) => `https://yandex.com/search/?text=${query}`
 };
 
 function isWebUrl(url?: string) {
   return Boolean(url?.startsWith("http://") || url?.startsWith("https://"));
 }
 
-function resolveInputToUrl(raw: string): string {
-  const t = raw.trim();
-  if (!t) return "lume://new-tab";
-  if (/^(https?|lume|about):\/\//i.test(t)) return t;
-  if (/\s/.test(t) || !t.includes("."))
-    return `https://duckduckgo.com/?q=${encodeURIComponent(t)}`;
-  return `https://${t}`;
+function resolveInputToUrl(raw: string, searchEngine: SearchEngineId = "google"): string {
+  const input = raw.trim();
+
+  if (!input) {
+    return "lume://new-tab";
+  }
+
+  if (/^https?:\/\//i.test(input) || input.startsWith("lume://") || input.startsWith("about:")) {
+    return input;
+  }
+
+  if (looksLikeHost(input)) {
+    const host = hostCandidate(input) ?? input;
+    const scheme = isLocalOrIpHost(host) ? "http" : "https";
+    const normalizedInput =
+      isRawIpv6Host(host) && !input.startsWith("[")
+        ? input.replace(host, `[${host}]`)
+        : input;
+
+    return `${scheme}://${normalizedInput}`;
+  }
+
+  const encodedQuery = encodeURIComponent(input);
+  return SEARCH_ENGINES[searchEngine](encodedQuery);
+}
+
+function looksLikeHost(input: string) {
+  if (/\s/.test(input)) {
+    return false;
+  }
+
+  const host = hostCandidate(input);
+
+  return Boolean(host && (host.includes(".") || isLocalOrIpHost(host)));
+}
+
+function hostCandidate(input: string) {
+  const firstToken = input.split("/")[0]?.trim();
+
+  if (!firstToken) {
+    return null;
+  }
+
+  if (firstToken.startsWith("[")) {
+    return firstToken.slice(1).split("]")[0] ?? null;
+  }
+
+  if (isRawIpv6Host(firstToken)) {
+    return firstToken;
+  }
+
+  return firstToken.split(":")[0] ?? firstToken;
+}
+
+function isLocalOrIpHost(host: string) {
+  return (
+    host.toLowerCase() === "localhost" ||
+    /^(\d{1,3}\.){3}\d{1,3}$/.test(host) ||
+    isRawIpv6Host(host)
+  );
+}
+
+function isRawIpv6Host(host: string) {
+  return host.includes(":") && /^[0-9a-f:]+$/i.test(host);
 }
 
 function displayUrl(url: string): string {
   try {
-    const u = new URL(url);
-    if (u.protocol === "lume:" || u.protocol === "about:") return url;
-    return u.href;
+    const parsed = new URL(url);
+
+    if (parsed.protocol === "lume:" || parsed.protocol === "about:") {
+      return url;
+    }
+
+    return parsed.href;
   } catch {
     return url;
   }
 }
 
+function navButtonClass(enabled: boolean) {
+  return [
+    "grid h-8 w-8 place-items-center rounded-md transition",
+    enabled
+      ? "text-black/52 hover:bg-black/6 hover:text-black"
+      : "cursor-not-allowed text-black/18"
+  ].join(" ");
+}
+
 export default function Home() {
   const [tabs, setTabs] = useState<BrowserTab[]>([INIT_TAB]);
+  const [activeSpace, setActiveSpace] = useState(DEFAULT_SPACE);
   const [commandOpen, setCommandOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [addressValue, setAddressValue] = useState("");
@@ -70,175 +143,278 @@ export default function Home() {
   const addressRef = useRef<HTMLInputElement>(null);
 
   const activeTab = useMemo(
-    () => tabs.find((t) => t.is_active) ?? tabs[0],
+    () => tabs.find((tab) => tab.is_active) ?? tabs[0],
     [tabs]
   );
 
-  /* ── Sync address bar with active tab URL ─────────────────────────── */
+  const visibleTabs = useMemo(
+    () => tabs.filter((tab) => tab.space === activeSpace),
+    [activeSpace, tabs]
+  );
+
+  const refreshTabs = useCallback(async () => {
+    const nextTabs = await invokeCommand<BrowserTab[]>("list_tabs");
+
+    if (nextTabs?.length) {
+      setTabs(nextTabs);
+      setActiveSpace(
+        nextTabs.find((tab) => tab.is_active)?.space ?? nextTabs[0]?.space ?? DEFAULT_SPACE
+      );
+    }
+  }, []);
+
+  useEffect(() => {
+    const timeout = window.setTimeout(() => {
+      void refreshTabs();
+    }, 0);
+
+    return () => window.clearTimeout(timeout);
+  }, [refreshTabs]);
+
   useEffect(() => {
     if (!isEditingAddress) {
-      setAddressValue(activeTab?.url ?? "");
+      const timeout = window.setTimeout(() => {
+        setAddressValue(activeTab?.url ?? "");
+      }, 0);
+
+      return () => window.clearTimeout(timeout);
     }
+
+    return undefined;
   }, [activeTab?.url, isEditingAddress]);
 
-  /* ── Apply preferences to <html> ─────────────────────────────────── */
   useEffect(() => {
     applyPreferences(preferences);
   }, [preferences]);
 
-  /* ── Load tabs from Rust on mount ────────────────────────────────── */
-  const refreshTabs = useCallback(async () => {
-    const next = await invokeCommand<BrowserTab[]>("list_tabs");
-    if (next?.length) setTabs(next);
-  }, []);
-
   useEffect(() => {
-    void refreshTabs();
-  }, [refreshTabs]);
+    function onKeyDown(event: KeyboardEvent) {
+      const mod = event.ctrlKey || event.metaKey;
 
-  /* ── Keyboard shortcuts ──────────────────────────────────────────── */
-  useEffect(() => {
-    function onKey(e: KeyboardEvent) {
-      const mod = e.ctrlKey || e.metaKey;
-      if (mod && e.key === "t") {
-        e.preventDefault();
+      if (mod && event.key.toLowerCase() === "t") {
+        event.preventDefault();
         void createTab();
       }
-      if (mod && e.key === "l") {
-        e.preventDefault();
+
+      if (mod && event.key.toLowerCase() === "l") {
+        event.preventDefault();
         setIsEditingAddress(true);
-        setTimeout(() => {
+        window.setTimeout(() => {
           addressRef.current?.focus();
           addressRef.current?.select();
         }, 0);
       }
-      if (mod && e.key === "w") {
-        e.preventDefault();
-        if (activeTab) void closeTab(activeTab.id);
+
+      if (mod && event.key.toLowerCase() === "w") {
+        event.preventDefault();
+
+        if (activeTab) {
+          void closeTab(activeTab.id);
+        }
       }
-      if (mod && e.key === "r") {
-        e.preventDefault();
+
+      if ((mod && event.key.toLowerCase() === "r") || event.key === "F5") {
+        event.preventDefault();
         void handleReload();
       }
+
+      if (event.altKey && event.key === "ArrowLeft") {
+        event.preventDefault();
+        void handleBack();
+      }
+
+      if (event.altKey && event.key === "ArrowRight") {
+        event.preventDefault();
+        void handleForward();
+      }
     }
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
+
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
   });
 
-  /* ── Tab CRUD ─────────────────────────────────────────────────────── */
-  async function createTab() {
+  async function createTab(space = activeSpace) {
     const request: NewTabRequest = {
       title: "New Tab",
       url: "lume://new-tab",
-      space: activeTab?.space ?? "Focus",
-      activate: true,
+      space,
+      activate: true
     };
     const created = await invokeCommand<BrowserTab>("create_tab", { request });
+
     if (created) {
+      setActiveSpace(created.space);
       await refreshTabs();
-    } else {
-      setTabs((prev) => [
-        ...prev.map((t) => ({ ...t, is_active: false })),
-        {
-          id: `local-${Date.now()}`,
-          title: "New Tab",
-          url: "lume://new-tab",
-          is_active: true,
-          pinned: false,
-          space: activeTab?.space ?? "Focus",
-        },
-      ]);
+      return;
     }
+
+    setTabs((currentTabs) => [
+      ...currentTabs.map((tab) => ({ ...tab, is_active: false })),
+      {
+        id: `local-${Date.now()}`,
+        title: "New Tab",
+        url: "lume://new-tab",
+        is_active: true,
+        pinned: false,
+        space
+      }
+    ]);
+    setActiveSpace(space);
   }
 
   async function selectTab(id: string) {
     const selected = await invokeCommand<BrowserTab>("activate_tab", { id });
+
     if (selected) {
+      setActiveSpace(selected.space);
       await refreshTabs();
-    } else {
-      setTabs((prev) => prev.map((t) => ({ ...t, is_active: t.id === id })));
+      return;
+    }
+
+    setTabs((currentTabs) =>
+      currentTabs.map((tab) => ({ ...tab, is_active: tab.id === id }))
+    );
+
+    const localTab = tabs.find((tab) => tab.id === id);
+
+    if (localTab) {
+      setActiveSpace(localTab.space);
     }
   }
 
   async function closeTab(id: string) {
-    const next = await invokeCommand<BrowserTab[]>("close_tab", { id });
-    if (next !== null) {
-      if (next.length === 0) {
-        await createTab();
-      } else {
-        setTabs(next);
-      }
-    } else {
-      setTabs((prev) => {
-        const remaining = prev.filter((t) => t.id !== id);
-        if (!remaining.length) return prev;
-        const hasActive = remaining.some((t) => t.is_active);
-        if (hasActive) return remaining;
-        return remaining.map((t, i) => ({ ...t, is_active: i === remaining.length - 1 }));
-      });
+    const nextTabs = await invokeCommand<BrowserTab[]>("close_tab", { id });
+
+    if (nextTabs !== null) {
+      setTabs(nextTabs);
+      setActiveSpace(
+        nextTabs.find((tab) => tab.is_active)?.space ?? nextTabs[0]?.space ?? DEFAULT_SPACE
+      );
+      return;
     }
+
+    setTabs((currentTabs) => {
+      const remainingTabs = currentTabs.filter((tab) => tab.id !== id);
+
+      if (!remainingTabs.length) {
+        return [INIT_TAB];
+      }
+
+      if (remainingTabs.some((tab) => tab.is_active)) {
+        return remainingTabs;
+      }
+
+      return remainingTabs.map((tab, index) => ({
+        ...tab,
+        is_active: index === remainingTabs.length - 1
+      }));
+    });
   }
 
-  /* ── Navigation ───────────────────────────────────────────────────── */
+  async function selectSpace(space: string) {
+    setActiveSpace(space);
+
+    const existingTab = tabs.find((tab) => tab.space === space);
+
+    if (existingTab) {
+      await selectTab(existingTab.id);
+      return;
+    }
+
+    await createTab(space);
+  }
+
   async function navigateTo(input: string) {
     setIsLoading(true);
+
     try {
-      const navigated = await invokeCommand<BrowserTab>("navigate_active_tab", { input });
+      const normalizedInput = resolveInputToUrl(input, preferences.searchEngine);
+      const navigated = await invokeCommand<BrowserTab>("navigate_active_tab", {
+        input: normalizedInput
+      });
+
       if (navigated) {
+        setActiveSpace(navigated.space);
         await refreshTabs();
         return;
       }
-      // Fallback when Tauri is not available
-      const url = resolveInputToUrl(input);
-      setTabs((prev) => {
-        const idx = prev.findIndex((t) => t.is_active);
-        const i = idx >= 0 ? idx : 0;
-        let title = input;
-        try { title = new URL(url).hostname || input; } catch { /* use input */ }
-        return prev.map((t, j) =>
-          j === i ? { ...t, url, title } : t
+
+      const url = normalizedInput;
+      let title = input;
+
+      try {
+        title = new URL(url).hostname || input;
+      } catch {
+        title = input;
+      }
+
+      setTabs((currentTabs) => {
+        const activeIndex = currentTabs.findIndex((tab) => tab.is_active);
+        const indexToUpdate = activeIndex >= 0 ? activeIndex : 0;
+
+        return currentTabs.map((tab, index) =>
+          index === indexToUpdate
+            ? {
+                ...tab,
+                title,
+                url,
+                space: tab.space || activeSpace
+              }
+            : tab
         );
       });
     } finally {
-      setIsLoading(false);
+      window.setTimeout(() => setIsLoading(false), 250);
     }
   }
 
-  async function submitAddress(e: FormEvent<HTMLFormElement>) {
-    e.preventDefault();
+  async function submitAddress(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
     setIsEditingAddress(false);
-    const raw = addressValue.trim();
-    if (raw) await navigateTo(raw);
+
+    const input = addressValue.trim();
+
+    if (input) {
+      await navigateTo(input);
+    }
   }
 
-  /* ── Webview controls (via Rust eval_in_webview bridge) ──────────── */
+  async function runWebviewControl(script: string) {
+    if (!activeTab || !isWebUrl(activeTab.url)) {
+      return;
+    }
+
+    setIsLoading(true);
+    await evalInWebview(activeTab.id, script);
+    window.setTimeout(() => setIsLoading(false), 350);
+  }
+
   async function handleBack() {
-    if (!activeTab) return;
-    await evalInWebview(activeTab.id, "history.back()");
+    await runWebviewControl("history.back()");
   }
 
   async function handleForward() {
-    if (!activeTab) return;
-    await evalInWebview(activeTab.id, "history.forward()");
+    await runWebviewControl("history.forward()");
   }
 
   async function handleReload() {
-    if (!activeTab) return;
-    if (isWebUrl(activeTab.url)) {
-      await evalInWebview(activeTab.id, "location.reload()");
-    }
+    await runWebviewControl("location.reload()");
   }
 
-  /* ── Preferences ─────────────────────────────────────────────────── */
-  function updatePreferences(next: UserPreferences) {
-    setPreferences(next);
-    writePreferences(next);
+  async function handleHome() {
+    await navigateTo(preferences.homePageUrl || "lume://new-tab");
   }
 
-  /* ── Derived state ───────────────────────────────────────────────── */
-  const isSecure = activeTab?.url?.startsWith("https://");
+  function updatePreferences(nextPreferences: UserPreferences) {
+    setPreferences(nextPreferences);
+    writePreferences(nextPreferences);
+  }
+
   const canBrowse = isWebUrl(activeTab?.url);
-  const displayAddr = isEditingAddress ? addressValue : displayUrl(activeTab?.url ?? "");
+  const isSecure = activeTab?.url?.startsWith("https://");
+  const displayAddress = isEditingAddress
+    ? addressValue
+    : displayUrl(activeTab?.url ?? "");
 
   return (
     <div className="h-screen overflow-hidden text-ink">
@@ -249,59 +425,70 @@ export default function Home() {
         onOpenChange={setCommandOpen}
         onNavigate={navigateTo}
       />
-      <SettingsPanel
-        open={settingsOpen}
-        preferences={preferences}
-        onChange={updatePreferences}
-        onClose={() => setSettingsOpen(false)}
-      />
 
-      {/* Main layout: sidebar + content */}
       <div className="flex h-full pt-9">
         <Sidebar
-          tabs={tabs}
+          tabs={visibleTabs}
           activeTabId={activeTab?.id}
-          onCreateTab={createTab}
+          activeSpace={activeSpace}
+          onCreateTab={() => void createTab()}
           onSelectTab={selectTab}
           onCloseTab={closeTab}
+          onSelectSpace={selectSpace}
           onOpenCommandBar={() => setCommandOpen(true)}
+          onOpenPrivacy={() => void navigateTo("lume://privacy")}
+          onOpenLibrary={() => void navigateTo("lume://library")}
           onOpenSettings={() => setSettingsOpen(true)}
         />
 
-        {/* Content column */}
         <div className="flex min-w-0 flex-1 flex-col bg-white">
-          {/* Navigation bar */}
           <div className="flex h-11 shrink-0 items-center gap-1.5 border-b border-black/6 bg-[#f9f9f9] px-2">
-            {/* Nav buttons */}
             <button
               type="button"
               onClick={handleBack}
-              className="grid h-8 w-8 place-items-center rounded-md text-black/35 transition hover:bg-black/6 hover:text-black disabled:opacity-30"
-              title="Back (Alt+←)"
+              disabled={!canBrowse}
+              className={navButtonClass(Boolean(canBrowse))}
+              title="Back (Alt+Left)"
             >
               <ArrowLeft size={16} strokeWidth={2} />
             </button>
             <button
               type="button"
               onClick={handleForward}
-              className="grid h-8 w-8 place-items-center rounded-md text-black/35 transition hover:bg-black/6 hover:text-black"
-              title="Forward (Alt+→)"
+              disabled={!canBrowse}
+              className={navButtonClass(Boolean(canBrowse))}
+              title="Forward (Alt+Right)"
             >
               <ArrowRight size={16} strokeWidth={2} />
             </button>
             <button
               type="button"
               onClick={handleReload}
-              className={`grid h-8 w-8 place-items-center rounded-md text-black/35 transition hover:bg-black/6 hover:text-black ${isLoading ? "animate-spin" : ""}`}
+              disabled={!canBrowse}
+              className={navButtonClass(Boolean(canBrowse))}
               title="Reload (Ctrl+R)"
             >
-              <RefreshCw size={15} strokeWidth={2} />
+              <RefreshCw
+                size={15}
+                strokeWidth={2}
+                className={isLoading ? "animate-spin" : undefined}
+              />
             </button>
 
-            {/* Address bar */}
+            {preferences.showHomeButton ? (
+              <button
+                type="button"
+                onClick={handleHome}
+                className={navButtonClass(true)}
+                title="Home"
+              >
+                <HomeIcon size={15} strokeWidth={2} />
+              </button>
+            ) : null}
+
             <form
               onSubmit={submitAddress}
-              className="mx-1 flex h-8 min-w-0 flex-1 items-center gap-2 rounded-lg bg-black/5 px-3 ring-0 transition focus-within:bg-white focus-within:ring-2 focus-within:ring-ember/30"
+              className="mx-1 flex h-8 min-w-0 flex-1 items-center gap-2 rounded-lg bg-black/5 px-3 transition focus-within:bg-white focus-within:ring-2 focus-within:ring-ember/30"
             >
               {canBrowse && !isEditingAddress ? (
                 <Lock
@@ -314,33 +501,32 @@ export default function Home() {
               )}
               <input
                 ref={addressRef}
-                value={displayAddr}
-                onChange={(e) => setAddressValue(e.target.value)}
+                value={displayAddress}
+                onChange={(event) => setAddressValue(event.target.value)}
                 onFocus={() => {
                   setIsEditingAddress(true);
-                  setTimeout(() => addressRef.current?.select(), 0);
+                  window.setTimeout(() => addressRef.current?.select(), 0);
                 }}
-                onBlur={() => {
-                  setIsEditingAddress(false);
-                }}
+                onBlur={() => setIsEditingAddress(false)}
                 placeholder="Search or enter URL"
                 className="min-w-0 flex-1 bg-transparent text-[13px] text-black/70 outline-none placeholder:text-black/25"
                 spellCheck={false}
                 autoComplete="off"
               />
-              {isEditingAddress && addressValue && (
+              {isEditingAddress && addressValue ? (
                 <button
                   type="button"
-                  onMouseDown={(e) => e.preventDefault()}
+                  onMouseDown={(event) => event.preventDefault()}
                   onClick={() => setAddressValue("")}
                   className="grid h-4 w-4 shrink-0 place-items-center rounded-full bg-black/10 text-black/40 hover:bg-black/15"
+                  aria-label="Clear address"
+                  title="Clear"
                 >
                   <X size={9} strokeWidth={3} />
                 </button>
-              )}
+              ) : null}
             </form>
 
-            {/* Settings */}
             <button
               type="button"
               onClick={() => setSettingsOpen(true)}
@@ -351,11 +537,17 @@ export default function Home() {
             </button>
           </div>
 
-          {/* Viewport — fills remaining space; display:flex so children get resolved height */}
-          <div className="relative min-h-0 flex-1 flex">
+          <div className="relative flex min-h-0 flex-1">
             <BrowserViewport activeTab={activeTab} onNavigate={navigateTo} />
           </div>
         </div>
+
+        <SettingsPanel
+          open={settingsOpen}
+          preferences={preferences}
+          onChange={updatePreferences}
+          onClose={() => setSettingsOpen(false)}
+        />
       </div>
     </div>
   );

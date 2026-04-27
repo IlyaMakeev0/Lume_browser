@@ -6,7 +6,7 @@ mod tabs_manager;
 
 use std::sync::Mutex;
 
-use lume_engine::{FetchPreview, HistoryEntry, NavigationTarget};
+use lume_engine::{FetchPreview, HistoryEntry, NavigationTarget, NetworkProbe};
 use network_fetcher::NetworkFetcher;
 use platform::PlatformProfile;
 use tabs_manager::{BrowserTab, NewTabRequest, TabsManager};
@@ -61,11 +61,11 @@ fn navigate_active_tab(
 ) -> Result<BrowserTab, String> {
     let target = fetcher.resolve_navigation(&input)?;
     let mut manager = state.lock().map_err(|error| error.to_string())?;
+    let tab = manager.navigate_active_tab(target.display_title.clone(), target.resolved_url.clone());
 
-    Ok(manager.navigate_active_tab(
-        target.display_title,
-        target.resolved_url,
-    ))
+    fetcher.record_navigation(&target);
+
+    Ok(tab)
 }
 
 #[tauri::command]
@@ -74,6 +74,14 @@ async fn fetch_preview(
     url: String,
 ) -> Result<FetchPreview, String> {
     fetcher.fetch_text_preview(&url).await
+}
+
+#[tauri::command]
+async fn probe_url(
+    fetcher: State<'_, NetworkFetcher>,
+    url: String,
+) -> Result<NetworkProbe, String> {
+    fetcher.probe(&url).await
 }
 
 #[tauri::command]
@@ -129,6 +137,7 @@ pub fn run() {
             navigate_active_tab,
             platform_profile,
             fetch_preview,
+            probe_url,
             list_history,
             clear_browser_data,
             eval_in_webview

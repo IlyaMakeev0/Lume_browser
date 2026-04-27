@@ -3,9 +3,30 @@ import type { UserPreferences } from "@/types/preferences";
 const STORAGE_KEY = "lume.preferences.v1";
 
 export const defaultPreferences: UserPreferences = {
+  profileName: "Local profile",
+  syncEnabled: false,
   theme: "lume",
   font: "system",
-  density: "comfortable"
+  density: "comfortable",
+  searchEngine: "google",
+  startupMode: "new-tab",
+  startupUrl: "https://google.com",
+  showHomeButton: false,
+  homePageUrl: "lume://new-tab",
+  safeBrowsing: true,
+  blockThirdPartyCookies: false,
+  doNotTrack: false,
+  useSecureDns: true,
+  preloadPages: true,
+  askDownloadLocation: true,
+  downloadPath: "Downloads",
+  reduceMotion: false,
+  showFocusOutlines: true,
+  hardwareAcceleration: true,
+  backgroundApps: false,
+  memorySaver: true,
+  pageZoom: 100,
+  defaultFontSize: 14
 };
 
 export function readPreferences(): UserPreferences {
@@ -47,4 +68,11 @@ export function applyPreferences(preferences: UserPreferences) {
   document.documentElement.dataset.theme = preferences.theme;
   document.documentElement.dataset.font = preferences.font;
   document.documentElement.dataset.density = preferences.density;
+  document.documentElement.dataset.reduceMotion = String(preferences.reduceMotion);
+  document.documentElement.dataset.focusOutlines = String(preferences.showFocusOutlines);
+  document.documentElement.style.setProperty(
+    "--lume-default-font-size",
+    `${preferences.defaultFontSize}px`
+  );
+  document.documentElement.style.setProperty("--lume-page-zoom", `${preferences.pageZoom / 100}`);
 }

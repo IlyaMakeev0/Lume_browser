@@ -77,6 +77,8 @@ fn internal_title(input: &str) -> String {
     match input {
         "lume://start" => "Lume Start".to_string(),
         "lume://new-tab" => "New Tab".to_string(),
+        "lume://privacy" => "Privacy".to_string(),
+        "lume://library" => "Library".to_string(),
         "about:blank" => "Blank Page".to_string(),
         _ => "Lume Internal".to_string(),
     }
