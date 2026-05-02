@@ -12,6 +12,7 @@ export function UpdateButton() {
   const [newVersion, setNewVersion] = useState<string | null>(null);
   const [currentVersion, setCurrentVersion] = useState<string | null>(null);
   const [errorMsg, setErrorMsg] = useState("");
+  const [doneMsg, setDoneMsg] = useState("Installed! Restart to apply.");
 
   async function check() {
     setPhase("checking");
@@ -46,6 +47,11 @@ export function UpdateButton() {
       return;
     }
 
+    setDoneMsg(
+      result.launchedInstaller
+        ? "Installer launched. Finish setup to update."
+        : "Installed! Restart to apply."
+    );
     setPhase("done");
   }
 
@@ -128,7 +134,7 @@ export function UpdateButton() {
   if (phase === "done") {
     return (
       <div className="rounded-lg border border-mint/20 bg-mint/10 px-3 py-2">
-        <div className="text-[12px] text-mint">Installed! Restart to apply.</div>
+        <div className="text-[12px] text-mint">{doneMsg}</div>
       </div>
     );
   }

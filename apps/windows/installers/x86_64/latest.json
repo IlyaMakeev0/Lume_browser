@@ -1,10 +1,10 @@
 ﻿{
     "version":  "0.1.0",
     "notes":  "Lume Windows x86_64 release.",
-    "pub_date":  "2026-04-27T13:38:48Z",
+    "pub_date":  "2026-05-02T16:52:21Z",
     "platforms":  {
                       "windows-x86_64":  {
-                                             "signature":  "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUR1ROTTNteVhNY09pSXI3VjdHbDJmdVJnZ0NFeHFnR1JYaDAxOFhYS0Y0R1BYY3J4V3puc2xubW1PVWNFMTBmT3UydU9NRndiYzYzUjJSRE1NbzZRTUU4SkhJRGtYNWc4PQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzc3Mjk3MTI4CWZpbGU6THVtZV8wLjEuMF94NjQtc2V0dXAuZXhlClg2U1FLQVd4MklTc3VnMkhmdUJBYk5ON21JRGlyVVN3enlta21DNWFFbHZZdTl5cHprRU4ydDUvTWhWMGYyeGl0N20zNWVJVnE4cVp0UDJacy9tRkNRPT0K",
+                                             "signature":  "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUR1ROTTNteVhNY0RJZ0lZM0U4TUNNL0tkb2o3QnM0S1hrV2k5aWY0SUZmVXF3SDhVVFlsTE5nYlJGQzlscHRzR2l4UVo2bHBraXZpQ25ybE5RVllBV0RpeFhydnZmWmcwPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzc3NzQwNzQwCWZpbGU6THVtZV8wLjEuMF94NjQtc2V0dXAuZXhlCnBnZzlLT3doZHdSNERKdCt1TENwd2VzamxDakVHdlRjUlNkdWlmMWVhN0JMeDJYY05BaFEvWjBMVjFCVFJKVENjN1A3QUpBK0xCLzE5TjZQT3FkSEJnPT0K",
                                              "url":  "https://github.com/IlyaMakeev0/Lume_browser/releases/latest/download/Lume_0.1.0_x64-setup.exe"
                                          }
                   }

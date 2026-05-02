@@ -55,15 +55,53 @@ if (-not $SkipFrontendBuild) {
     Remove-Item -LiteralPath $frontendDist -Recurse -Force
   }
 
-  if (Get-Command npm -ErrorAction SilentlyContinue) {
-    npm run build
-  } else {
-    & $nodePath ".\node_modules\next\dist\bin\next" build
+  $tempBuildRoot = Join-Path $env:TEMP ("lume-next-build-" + [guid]::NewGuid().ToString("N"))
+  New-Item -ItemType Directory -Path $tempBuildRoot | Out-Null
+
+  $frontendItems = @(
+    "src",
+    "package.json",
+    "package-lock.json",
+    "next.config.mjs",
+    "next-env.d.ts",
+    "postcss.config.js",
+    "tailwind.config.ts",
+    "tsconfig.json",
+    "eslint.config.mjs"
+  )
+
+  foreach ($item in $frontendItems) {
+    $sourcePath = Join-Path $repoRoot $item
+    if (Test-Path -LiteralPath $sourcePath) {
+      Copy-Item -LiteralPath $sourcePath -Destination $tempBuildRoot -Recurse -Force
+    }
+  }
+
+  $sourceNodeModules = Join-Path $repoRoot "node_modules"
+  $tempNodeModules = Join-Path $tempBuildRoot "node_modules"
+  robocopy $sourceNodeModules $tempNodeModules /E /NFL /NDL /NJH /NJS /NP | Out-Null
+  if ($LASTEXITCODE -gt 7) {
+    throw "Copying node_modules failed with robocopy exit code $LASTEXITCODE."
+  }
+
+  Push-Location $tempBuildRoot
+  try {
+    & $nodePath ".\node_modules\next\dist\bin\next" build --webpack
+  } finally {
+    Pop-Location
   }
 
   if ($LASTEXITCODE -ne 0) {
     throw "Frontend build failed with exit code $LASTEXITCODE."
   }
+
+  $builtDist = Join-Path $tempBuildRoot "dist"
+  if (-not (Test-Path -LiteralPath (Join-Path $builtDist "index.html"))) {
+    throw "Frontend build did not produce dist\index.html."
+  }
+
+  New-Item -ItemType Directory -Force -Path $frontendDist | Out-Null
+  Copy-Item -Path (Join-Path $builtDist "*") -Destination $frontendDist -Recurse -Force
 }
 
 $defaultSigningKey = Join-Path $env:USERPROFILE ".tauri\lume-updater.key"
@@ -89,17 +127,15 @@ if (-not (Test-Path -LiteralPath $devCmd)) {
 }
 
 $extraConfigArg = ""
-if ($SkipFrontendBuild) {
-  $skipConfig = Join-Path $env:TEMP "lume-tauri-skip-frontend.json"
-  @'
+$skipConfig = Join-Path $env:TEMP "lume-tauri-skip-frontend.json"
+@'
 {
   "build": {
     "beforeBuildCommand": null
   }
 }
 '@ | Set-Content -LiteralPath $skipConfig -Encoding UTF8
-  $extraConfigArg = "--config `"$skipConfig`""
-}
+$extraConfigArg = "--config `"$skipConfig`""
 
 $tauriCli = Join-Path $repoRoot "node_modules\@tauri-apps\cli\tauri.js"
 if (Get-Command npm -ErrorAction SilentlyContinue) {

@@ -31,6 +31,7 @@ export type UserPreferences = {
   hardwareAcceleration: boolean;
   backgroundApps: boolean;
   memorySaver: boolean;
+  inactiveTabSuspendSeconds: number;
   pageZoom: number;
   defaultFontSize: number;
 };
@@ -39,10 +40,19 @@ export type UpdateCheckResult = {
   available: boolean;
   currentVersion: string;
   version?: string | null;
+  source?: string | null;
+  downloadUrl?: string | null;
+  assetName?: string | null;
+  error?: string | null;
 };
 
 export type UpdateInstallResult = {
   installed: boolean;
   currentVersion: string;
   version?: string | null;
+  source?: string | null;
+  downloadUrl?: string | null;
+  assetName?: string | null;
+  launchedInstaller?: boolean;
+  error?: string | null;
 };

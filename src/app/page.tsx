@@ -538,7 +538,13 @@ export default function Home() {
           </div>
 
           <div className="relative flex min-h-0 flex-1">
-            <BrowserViewport activeTab={activeTab} onNavigate={navigateTo} />
+            <BrowserViewport
+              activeTab={activeTab}
+              tabs={tabs}
+              memorySaver={preferences.memorySaver}
+              inactiveTabSuspendSeconds={preferences.inactiveTabSuspendSeconds}
+              onNavigate={navigateTo}
+            />
           </div>
         </div>
 

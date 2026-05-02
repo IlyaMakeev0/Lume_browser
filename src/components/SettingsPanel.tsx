@@ -198,7 +198,11 @@ export function SettingsPanel({
 
     if (result.available && result.version) {
       setAvailableVersion(result.version);
-      setUpdateStatus(`Version ${result.version} is ready to install.`);
+      setUpdateStatus(
+        result.source === "github"
+          ? `GitHub release ${result.version} is ready to install.`
+          : `Version ${result.version} is ready to install.`
+      );
     } else {
       setAvailableVersion(null);
       setUpdateStatus(`Already up to date: ${result.currentVersion}.`);
@@ -220,7 +224,11 @@ export function SettingsPanel({
     }
 
     if (result.installed) {
-      setUpdateStatus(`Installed ${result.version}. Restarting Lume...`);
+      setUpdateStatus(
+        result.launchedInstaller
+          ? `Installer opened for ${result.version}. Finish setup to update.`
+          : `Installed ${result.version}. Restarting Lume...`
+      );
     } else {
       setUpdateStatus(`No update found. Current version is ${result.currentVersion}.`);
     }
@@ -613,9 +621,20 @@ export function SettingsPanel({
             />
             <ToggleRow
               title="Memory saver"
-              description="Reduce memory use for inactive tabs."
+              description="Unload inactive web tabs after a short pause."
               checked={preferences.memorySaver}
               onChange={(checked) => updatePreferences({ memorySaver: checked })}
+            />
+            <RangeRow
+              title="Unload inactive tabs after"
+              value={preferences.inactiveTabSuspendSeconds}
+              min={5}
+              max={300}
+              step={5}
+              suffix="s"
+              onChange={(inactiveTabSuspendSeconds) =>
+                updatePreferences({ inactiveTabSuspendSeconds })
+              }
             />
           </SettingsSection>
         );

@@ -25,6 +25,7 @@ export const defaultPreferences: UserPreferences = {
   hardwareAcceleration: true,
   backgroundApps: false,
   memorySaver: true,
+  inactiveTabSuspendSeconds: 45,
   pageZoom: 100,
   defaultFontSize: 14
 };

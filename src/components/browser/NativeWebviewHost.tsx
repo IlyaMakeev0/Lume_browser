@@ -1,9 +1,11 @@
 "use client";
 
+import type { Webview } from "@tauri-apps/api/webview";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { webviewLabel, isTauriRuntime } from "@/lib/webview-utils";
+import { evalInWebview, webviewLabel, isTauriRuntime } from "@/lib/webview-utils";
 
 type Props = {
+  active: boolean;
   tabId: string;
   url: string;
 };
@@ -14,11 +16,19 @@ const CHROME_UA =
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 " +
   "(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36 Lume/1.0";
 
-export function NativeWebviewHost({ tabId, url }: Props) {
+export function NativeWebviewHost({ active, tabId, url }: Props) {
   const hostRef = useRef<HTMLDivElement>(null);
+  const webviewRef = useRef<Webview | null>(null);
+  const activeRef = useRef(active);
+  const initialUrlRef = useRef(url);
+  const loadedUrlRef = useRef(url);
   const [state, setState] = useState<VisualState>("loading");
   const [errorMsg, setErrorMsg] = useState("");
   const label = useMemo(() => webviewLabel(tabId), [tabId]);
+
+  useEffect(() => {
+    activeRef.current = active;
+  }, [active]);
 
   useEffect(() => {
     const el = hostRef.current;
@@ -57,18 +67,19 @@ export function NativeWebviewHost({ tabId, url }: Props) {
       const appWindow = getCurrentWindow();
 
       const webview = new Webview(appWindow, label, {
-        url,
+        url: initialUrlRef.current,
         x: Math.round(rect.left),
         y: Math.round(rect.top),
         width: Math.max(100, Math.round(rect.width)),
         height: Math.max(100, Math.round(rect.height)),
-        focus: true,
+        focus: activeRef.current,
         userAgent: CHROME_UA,
         zoomHotkeysEnabled: true,
         dragDropEnabled: true,
         backgroundColor: "#ffffff",
       });
 
+      webviewRef.current = webview;
       closeWebview = () => { void webview.close().catch(() => {}); };
 
       async function syncBounds() {
@@ -96,6 +107,11 @@ export function NativeWebviewHost({ tabId, url }: Props) {
         if (!disposed) {
           setState("ready");
           void syncBounds();
+          void (
+            activeRef.current
+              ? webview.show().then(() => webview.setFocus())
+              : webview.hide()
+          );
         }
       });
 
@@ -121,14 +137,39 @@ export function NativeWebviewHost({ tabId, url }: Props) {
       disposed = true;
       ro?.disconnect();
       removeBoundsListener?.();
+      webviewRef.current = null;
       closeWebview?.();
     };
-  }, [label, url]);
+  }, [label]);
+
+  useEffect(() => {
+    const webview = webviewRef.current;
+
+    if (!webview || state !== "ready") {
+      return;
+    }
+
+    if (active) {
+      void webview.show().then(() => webview.setFocus()).catch(() => {});
+      return;
+    }
+
+    void webview.hide().catch(() => {});
+  }, [active, state]);
+
+  useEffect(() => {
+    if (state !== "ready" || loadedUrlRef.current === url) {
+      return;
+    }
+
+    loadedUrlRef.current = url;
+    void evalInWebview(tabId, `window.location.assign(${JSON.stringify(url)});`);
+  }, [state, tabId, url]);
 
   return (
     <div
       ref={hostRef}
-      className="relative flex-1 min-h-0 min-w-0"
+      className="relative min-h-0 min-w-0 flex-1"
       style={{ background: state === "ready" ? "transparent" : "#fff" }}
     >
       {state === "loading" && (
