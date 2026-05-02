@@ -108,9 +108,7 @@ pub async fn check_app_update(app: AppHandle) -> Result<UpdateCheckResult, Strin
         },
         Err(plugin_error) => match github_latest_update(&current_version).await {
             Ok(Some(update)) => Ok(UpdateCheckResult {
-                // GitHub fallback is treated as available when Tauri metadata is missing.
-                // This keeps the updater useful even before latest.json is uploaded.
-                available: true,
+                available: update.newer_than_current,
                 current_version,
                 version: Some(update.version),
                 source: Some("github".to_string()),
@@ -177,6 +175,19 @@ async fn install_github_update(
         .await?
         .ok_or_else(|| "No GitHub release installer asset was found.".to_string())?;
 
+    if !update.newer_than_current {
+        return Ok(UpdateInstallResult {
+            installed: false,
+            current_version,
+            version: Some(update.version),
+            source: Some("github".to_string()),
+            download_url: Some(update.asset.browser_download_url),
+            asset_name: Some(update.asset.name),
+            launched_installer: false,
+            error: previous_error,
+        });
+    }
+
     let installer_path = download_asset_to_temp(&update.asset).await?;
     Command::new(&installer_path)
         .spawn()
@@ -216,7 +227,7 @@ async fn github_latest_update(current_version: &str) -> Result<Option<GithubUpda
         return Ok(None);
     };
 
-    let version = release_version(&release);
+    let version = asset_version(&asset).unwrap_or_else(|| release_version(&release));
     Ok(Some(GithubUpdate {
         newer_than_current: is_remote_version_newer(&version, current_version),
         version,
@@ -282,6 +293,42 @@ fn release_version(release: &GithubRelease) -> String {
         .to_string()
 }
 
+fn asset_version(asset: &GithubAsset) -> Option<String> {
+    version_from_asset_name(&asset.name)
+}
+
+fn version_from_asset_name(name: &str) -> Option<String> {
+    let chars = name.chars().collect::<Vec<_>>();
+
+    for start in 0..chars.len() {
+        if !chars[start].is_ascii_digit() {
+            continue;
+        }
+
+        let mut end = start;
+        let mut dots = 0;
+
+        while end < chars.len() && (chars[end].is_ascii_digit() || chars[end] == '.') {
+            if chars[end] == '.' {
+                dots += 1;
+            }
+
+            end += 1;
+        }
+
+        if dots >= 2 {
+            let candidate = chars[start..end].iter().collect::<String>();
+            let normalized = candidate.trim_end_matches('.').to_string();
+
+            if version_parts(&normalized).len() >= 3 {
+                return Some(normalized);
+            }
+        }
+    }
+
+    None
+}
+
 fn is_remote_version_newer(remote: &str, current: &str) -> bool {
     let remote_parts = version_parts(remote);
     let current_parts = version_parts(current);
@@ -305,4 +352,27 @@ fn version_parts(value: &str) -> Vec<u64> {
         .filter(|part| !part.is_empty())
         .filter_map(|part| part.parse::<u64>().ok())
         .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{is_remote_version_newer, version_from_asset_name};
+
+    #[test]
+    fn extracts_semver_from_windows_installer_name() {
+        assert_eq!(
+            version_from_asset_name("Lume_0.1.0_x64-setup.exe"),
+            Some("0.1.0".to_string())
+        );
+    }
+
+    #[test]
+    fn does_not_treat_same_asset_version_as_update() {
+        assert!(!is_remote_version_newer("0.1.0", "0.1.0"));
+    }
+
+    #[test]
+    fn treats_larger_asset_version_as_update() {
+        assert!(is_remote_version_newer("0.2.0", "0.1.0"));
+    }
 }

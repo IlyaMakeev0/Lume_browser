@@ -20,7 +20,7 @@ import {
   X
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
-import { type ReactNode, useMemo, useState } from "react";
+import { type ReactNode, useCallback, useEffect, useMemo, useState } from "react";
 import { invokeCommand } from "@/lib/tauri";
 import type {
   DensityId,
@@ -155,7 +155,7 @@ export function SettingsPanel({
 }: SettingsPanelProps) {
   const [activeSection, setActiveSection] = useState<SectionId>("appearance");
   const [settingsQuery, setSettingsQuery] = useState("");
-  const [updateStatus, setUpdateStatus] = useState("Ready to check GitHub Releases.");
+  const [updateStatus, setUpdateStatus] = useState("Checking for updates...");
   const [availableVersion, setAvailableVersion] = useState<string | null>(null);
   const [checking, setChecking] = useState(false);
   const [installing, setInstalling] = useState(false);
@@ -172,18 +172,7 @@ export function SettingsPanel({
     );
   }, [activeSection, settingsQuery]);
 
-  if (!open) {
-    return null;
-  }
-
-  function updatePreferences(next: Partial<UserPreferences>) {
-    onChange({
-      ...preferences,
-      ...next
-    });
-  }
-
-  async function checkForUpdates() {
+  const checkForUpdates = useCallback(async () => {
     setChecking(true);
     setUpdateStatus("Checking GitHub Releases...");
 
@@ -209,6 +198,29 @@ export function SettingsPanel({
     }
 
     setChecking(false);
+  }, []);
+
+  useEffect(() => {
+    if (!open) {
+      return undefined;
+    }
+
+    const timer = window.setTimeout(() => {
+      void checkForUpdates();
+    }, 0);
+
+    return () => window.clearTimeout(timer);
+  }, [checkForUpdates, open]);
+
+  if (!open) {
+    return null;
+  }
+
+  function updatePreferences(next: Partial<UserPreferences>) {
+    onChange({
+      ...preferences,
+      ...next
+    });
   }
 
   async function installUpdate() {
@@ -657,26 +669,22 @@ export function SettingsPanel({
                 </div>
               </div>
               <p className="mt-4 text-sm leading-6 text-ink/70">{updateStatus}</p>
-              <div className="mt-4 grid grid-cols-2 gap-2">
-                <button
-                  type="button"
-                  onClick={checkForUpdates}
-                  disabled={checking || installing}
-                  className="flex h-9 items-center justify-center gap-2 rounded-md border border-black/10 bg-white text-sm font-medium text-ink transition hover:border-black/25 disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  <RotateCw size={15} className={checking ? "animate-spin" : undefined} />
-                  Check
-                </button>
+              {checking ? (
+                <div className="mt-4 flex h-9 items-center gap-2 rounded-md border border-black/10 bg-ink/[0.03] px-3 text-sm text-ink/55">
+                  <RotateCw size={15} className="animate-spin" />
+                  Checking automatically
+                </div>
+              ) : availableVersion ? (
                 <button
                   type="button"
                   onClick={installUpdate}
-                  disabled={!availableVersion || checking || installing}
-                  className="flex h-9 items-center justify-center gap-2 rounded-md bg-ink text-sm font-medium text-white transition hover:bg-ember disabled:cursor-not-allowed disabled:opacity-50"
+                  disabled={installing}
+                  className="mt-4 flex h-9 w-full items-center justify-center gap-2 rounded-md bg-ink text-sm font-medium text-white transition hover:bg-ember disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   <Download size={15} />
                   Install
                 </button>
-              </div>
+              ) : null}
             </div>
           </SettingsSection>
         );
