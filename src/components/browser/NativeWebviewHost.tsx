@@ -8,6 +8,7 @@ type Props = {
   active: boolean;
   tabId: string;
   url: string;
+  proxyUrl?: string;
 };
 
 type VisualState = "loading" | "ready" | "error" | "fallback";
@@ -16,11 +17,11 @@ const CHROME_UA =
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 " +
   "(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36 Lume/1.0";
 
-export function NativeWebviewHost({ active, tabId, url }: Props) {
+export function NativeWebviewHost({ active, tabId, url, proxyUrl }: Props) {
   const hostRef = useRef<HTMLDivElement>(null);
   const webviewRef = useRef<Webview | null>(null);
   const activeRef = useRef(active);
-  const initialUrlRef = useRef(url);
+  const latestUrlRef = useRef(url);
   const loadedUrlRef = useRef(url);
   const [state, setState] = useState<VisualState>("loading");
   const [errorMsg, setErrorMsg] = useState("");
@@ -29,6 +30,10 @@ export function NativeWebviewHost({ active, tabId, url }: Props) {
   useEffect(() => {
     activeRef.current = active;
   }, [active]);
+
+  useEffect(() => {
+    latestUrlRef.current = url;
+  }, [url]);
 
   useEffect(() => {
     const el = hostRef.current;
@@ -67,7 +72,7 @@ export function NativeWebviewHost({ active, tabId, url }: Props) {
       const appWindow = getCurrentWindow();
 
       const webview = new Webview(appWindow, label, {
-        url: initialUrlRef.current,
+        url: latestUrlRef.current,
         x: Math.round(rect.left),
         y: Math.round(rect.top),
         width: Math.max(100, Math.round(rect.width)),
@@ -77,6 +82,7 @@ export function NativeWebviewHost({ active, tabId, url }: Props) {
         zoomHotkeysEnabled: true,
         dragDropEnabled: true,
         backgroundColor: "#ffffff",
+        proxyUrl,
       });
 
       webviewRef.current = webview;
@@ -140,7 +146,7 @@ export function NativeWebviewHost({ active, tabId, url }: Props) {
       webviewRef.current = null;
       closeWebview?.();
     };
-  }, [label]);
+  }, [label, proxyUrl]);
 
   useEffect(() => {
     const webview = webviewRef.current;

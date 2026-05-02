@@ -11,6 +11,7 @@ import {
   Globe2,
   Home,
   MonitorCog,
+  Network,
   Palette,
   RotateCw,
   Search,
@@ -46,6 +47,7 @@ type SectionId =
   | "search"
   | "startup"
   | "privacy"
+  | "network"
   | "downloads"
   | "accessibility"
   | "system"
@@ -88,6 +90,12 @@ const sections: SettingsSectionInfo[] = [
     title: "Privacy and security",
     icon: ShieldCheck,
     keywords: "safe browsing cookies dns tracking preload"
+  },
+  {
+    id: "network",
+    title: "Network",
+    icon: Network,
+    keywords: "proxy http socks5 vpn connection"
   },
   {
     id: "downloads",
@@ -146,6 +154,10 @@ const startupModes: Array<{ id: StartupModeId; name: string; description: string
   { id: "continue", name: "Continue", description: "Reopen the previous browsing space" },
   { id: "specific", name: "Specific page", description: "Open a page you choose" }
 ];
+
+function isProxyUrlValid(value: string) {
+  return !value.trim() || /^(https?|socks5):\/\/\S+$/i.test(value.trim());
+}
 
 export function SettingsPanel({
   open,
@@ -578,6 +590,43 @@ export function SettingsPanel({
               checked={preferences.askDownloadLocation}
               onChange={(checked) => updatePreferences({ askDownloadLocation: checked })}
             />
+          </SettingsSection>
+        );
+
+      case "network":
+        return (
+          <SettingsSection
+            icon={Network}
+            title="Network"
+            description="Proxy routing for web pages opened in native tabs."
+          >
+            <ToggleRow
+              title="Use proxy"
+              description="Route new and reloaded web tabs through a proxy server."
+              checked={preferences.proxyEnabled}
+              onChange={(checked) => updatePreferences({ proxyEnabled: checked })}
+            />
+            <SettingRow
+              title="Proxy URL"
+              description="Supports http://, https://, and socks5:// addresses."
+            >
+              <input
+                value={preferences.proxyUrl}
+                onChange={(event) => updatePreferences({ proxyUrl: event.target.value })}
+                placeholder="socks5://127.0.0.1:9050"
+                className={clsx(
+                  "h-9 w-56 rounded-md border bg-white px-3 text-sm text-ink outline-none transition",
+                  isProxyUrlValid(preferences.proxyUrl)
+                    ? "border-black/10 focus:border-ember/60"
+                    : "border-ember text-ember focus:border-ember"
+                )}
+              />
+            </SettingRow>
+            {!isProxyUrlValid(preferences.proxyUrl) ? (
+              <div className="rounded-lg border border-ember/30 bg-ember/10 px-3 py-2 text-xs leading-5 text-ember">
+                Proxy must start with http://, https://, or socks5://.
+              </div>
+            ) : null}
           </SettingsSection>
         );
 

@@ -32,6 +32,8 @@ export type UserPreferences = {
   backgroundApps: boolean;
   memorySaver: boolean;
   inactiveTabSuspendSeconds: number;
+  proxyEnabled: boolean;
+  proxyUrl: string;
   pageZoom: number;
   defaultFontSize: number;
 };

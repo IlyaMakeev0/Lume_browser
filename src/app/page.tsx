@@ -116,10 +116,26 @@ function displayUrl(url: string): string {
       return url;
     }
 
-    return parsed.href;
+    const host = parsed.hostname.replace(/^www\./i, "");
+    const port = parsed.port ? `:${parsed.port}` : "";
+    const path = parsed.pathname === "/" ? "" : parsed.pathname;
+    const search = parsed.search;
+    const hash = parsed.hash;
+
+    return `${host}${port}${path}${search}${hash}`;
   } catch {
     return url;
   }
+}
+
+function normalizedProxyUrl(preferences: UserPreferences): string | undefined {
+  const proxyUrl = preferences.proxyUrl.trim();
+
+  if (!preferences.proxyEnabled || !proxyUrl) {
+    return undefined;
+  }
+
+  return /^(https?|socks5):\/\//i.test(proxyUrl) ? proxyUrl : undefined;
 }
 
 function navButtonClass(enabled: boolean) {
@@ -198,6 +214,7 @@ export default function Home() {
 
       if (mod && event.key.toLowerCase() === "l") {
         event.preventDefault();
+        setAddressValue(activeTab?.url ?? "");
         setIsEditingAddress(true);
         window.setTimeout(() => {
           addressRef.current?.focus();
@@ -415,6 +432,7 @@ export default function Home() {
   const displayAddress = isEditingAddress
     ? addressValue
     : displayUrl(activeTab?.url ?? "");
+  const proxyUrl = normalizedProxyUrl(preferences);
 
   return (
     <div className="h-screen overflow-hidden text-ink">
@@ -504,6 +522,7 @@ export default function Home() {
                 value={displayAddress}
                 onChange={(event) => setAddressValue(event.target.value)}
                 onFocus={() => {
+                  setAddressValue(activeTab?.url ?? "");
                   setIsEditingAddress(true);
                   window.setTimeout(() => addressRef.current?.select(), 0);
                 }}
@@ -543,6 +562,7 @@ export default function Home() {
               tabs={tabs}
               memorySaver={preferences.memorySaver}
               inactiveTabSuspendSeconds={preferences.inactiveTabSuspendSeconds}
+              proxyUrl={proxyUrl}
               onNavigate={navigateTo}
             />
           </div>

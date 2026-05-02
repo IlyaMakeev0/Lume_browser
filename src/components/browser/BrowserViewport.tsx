@@ -13,6 +13,7 @@ type Props = {
   tabs: BrowserTab[];
   memorySaver: boolean;
   inactiveTabSuspendSeconds: number;
+  proxyUrl?: string;
   onNavigate: (input: string) => Promise<void>;
 };
 
@@ -25,6 +26,7 @@ export function BrowserViewport({
   tabs,
   memorySaver,
   inactiveTabSuspendSeconds,
+  proxyUrl,
   onNavigate
 }: Props) {
   const activeTabIsWeb = isWebUrl(activeTab?.url);
@@ -106,8 +108,13 @@ export function BrowserViewport({
             )}
             aria-hidden={!active}
           >
-            <PageLoadGuard url={tab.url} onNavigate={onNavigate}>
-              <NativeWebviewHost active={active} tabId={tab.id} url={tab.url} />
+            <PageLoadGuard url={tab.url} skipProbe={Boolean(proxyUrl)} onNavigate={onNavigate}>
+              <NativeWebviewHost
+                active={active}
+                tabId={tab.id}
+                url={tab.url}
+                proxyUrl={proxyUrl}
+              />
             </PageLoadGuard>
           </div>
         );

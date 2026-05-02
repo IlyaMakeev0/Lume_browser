@@ -26,6 +26,8 @@ export const defaultPreferences: UserPreferences = {
   backgroundApps: false,
   memorySaver: true,
   inactiveTabSuspendSeconds: 45,
+  proxyEnabled: false,
+  proxyUrl: "",
   pageZoom: 100,
   defaultFontSize: 14
 };

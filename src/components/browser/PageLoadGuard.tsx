@@ -7,6 +7,7 @@ import type { NetworkProbe } from "@/types/tabs";
 
 type PageLoadGuardProps = {
   url: string;
+  skipProbe?: boolean;
   children: React.ReactNode;
   onNavigate: (input: string) => Promise<void>;
 };
@@ -16,11 +17,19 @@ type ProbeState =
   | { kind: "ready"; probe?: NetworkProbe }
   | { kind: "failed"; probe: NetworkProbe };
 
-export function PageLoadGuard({ url, children, onNavigate }: PageLoadGuardProps) {
+export function PageLoadGuard({ url, skipProbe = false, children, onNavigate }: PageLoadGuardProps) {
   const [state, setState] = useState<ProbeState>({ kind: "checking" });
   const [retryCount, setRetryCount] = useState(0);
 
   useEffect(() => {
+    if (skipProbe) {
+      const readyTimer = window.setTimeout(() => {
+        setState({ kind: "ready" });
+      }, 0);
+
+      return () => window.clearTimeout(readyTimer);
+    }
+
     let disposed = false;
 
     const checkingTimeout = window.setTimeout(() => {
@@ -46,7 +55,7 @@ export function PageLoadGuard({ url, children, onNavigate }: PageLoadGuardProps)
       disposed = true;
       window.clearTimeout(checkingTimeout);
     };
-  }, [retryCount, url]);
+  }, [retryCount, skipProbe, url]);
 
   if (state.kind === "ready") {
     return <>{children}</>;
